@@ -10,6 +10,7 @@
 import { smsg } from "#core/smsg.js";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { userDb } from "./lib/userDb.js";
 
 const CMD_PREFIX_RE = /^[/]/;
 
@@ -136,6 +137,17 @@ export async function handler(chatUpdate) {
         const regOwners = global.config.owner.map((id) => id.toString().split("@")[0]);
         const isOwner = m.fromMe || regOwners.includes(senderLid);
 
+        // Auto-save user to DB (creates user record if new, links JID and LID to avoid duplicate entries)
+        const dbUser = userDb.getUser(m.sender, {
+            pushName: m.pushName || m.name,
+            jid: m.sender?.endsWith("@s.whatsapp.net") ? m.sender : undefined,
+            lid: m.sender?.endsWith("@lid") ? m.sender : undefined,
+        });
+
+        if (isOwner && dbUser && !dbUser.registered) {
+            userDb.updateUser(m.sender, { registered: true });
+        }
+
         if (!m.fromMe && global.config.self && !isOwner) {
             return;
         }
@@ -223,6 +235,26 @@ Maka kondisi global.config.self bernilai salah (false). Karena menggunakan logik
                 if (!isCmdMatch(command, plugin.command)) continue;
 
                 m.plugin = name;
+
+                // Check registration status for non-owners
+                if (dbUser && !dbUser.registered && !isOwner) {
+                    const allowedCmds = ["register", "reg", "daftar", "vcard", "cekreg"];
+                    if (!allowedCmds.includes(command)) {
+                        const ownerNum = process.env.OWNER_NUMBER || "082323780821";
+                        await safe(() =>
+                            m.reply(
+                                `⚠️ *AKSES DITOLAK - BELUM TERDAFTAR*\n\n` +
+                                `Nomor Anda (*${dbUser.phone}*) belum terdaftar di database bot.\n\n` +
+                                `*Cara Registrasi:*\n` +
+                                `1. Simpan nomor Owner (*${ownerNum}*) dengan nama *Rahardiyan*\n` +
+                                `2. Kirim *Kartu Kontak (Contact VCard)* Anda ke chat ini.\n` +
+                                `3. Bot akan otomatis memverifikasi & menyimpan nomor Anda ke Google Contacts.\n\n` +
+                                `Atau ketik *.register* untuk instruksi lengkap.`
+                            )
+                        );
+                        break;
+                    }
+                }
 
                 const fail = plugin.fail || global.dfail;
 
