@@ -142,9 +142,11 @@ export async function handler(chatUpdate) {
 
         await safe(() => printMessage(m, this));
 
-        const senderLid = m.sender ? m.sender.split("@")[0] : "";
-        const regOwners = global.config.owner.map((id) => id.toString().split("@")[0]);
-        const isOwner = regOwners.includes(senderLid);
+        const rawSenderId = m.sender ? m.sender.split("@")[0].split(":")[0] : "";
+        const cleanSenderNum = userDb.cleanNumber(m.sender);
+        const primaryId = userDb.resolveId(m.sender);
+        const regOwners = global.config.owner.map((id) => id.toString().split("@")[0].split(":")[0]);
+        const isOwner = regOwners.includes(rawSenderId) || regOwners.includes(cleanSenderNum) || regOwners.includes(primaryId);
 
         // Auto-save user to DB (creates user record if new, links JID and LID to avoid duplicate entries)
         const dbUser = userDb.getUser(m.sender, {
