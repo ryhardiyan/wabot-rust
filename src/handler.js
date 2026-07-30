@@ -131,11 +131,20 @@ export async function handler(chatUpdate) {
         const m = smsg(this, messages[messages.length - 1]);
         if (!m || m.isBaileys) return;
 
+        // Prevent bot from responding to its own messages / self number
+        const botJid = this.user?.id ? (this.decodeJid ? this.decodeJid(this.user.id) : this.user.id) : "";
+        const botLid = this.user?.lid ? (this.decodeJid ? this.decodeJid(this.user.lid) : this.user.lid) : "";
+        const senderJid = m.sender ? (this.decodeJid ? this.decodeJid(m.sender) : m.sender) : "";
+
+        if (m.fromMe || (botJid && senderJid === botJid) || (botLid && senderJid === botLid)) {
+            return;
+        }
+
         await safe(() => printMessage(m, this));
 
         const senderLid = m.sender ? m.sender.split("@")[0] : "";
         const regOwners = global.config.owner.map((id) => id.toString().split("@")[0]);
-        const isOwner = m.fromMe || regOwners.includes(senderLid);
+        const isOwner = regOwners.includes(senderLid);
 
         // Auto-save user to DB (creates user record if new, links JID and LID to avoid duplicate entries)
         const dbUser = userDb.getUser(m.sender, {
