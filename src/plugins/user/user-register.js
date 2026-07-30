@@ -1,7 +1,7 @@
 /**
  * @file User Registration Plugin
  * @module plugins/user/register
- * @description Handles user registration via Google Contacts API and contact VCard verification.
+ * @description Handles user registration via Owner contact VCard verification and Google Contacts API.
  * @license Apache-2.0
  */
 
@@ -34,7 +34,7 @@ function parseVCard(vcard) {
         phone = "62" + phone.slice(1);
     }
 
-    return { name: name || "User", phone };
+    return { name: name || "", phone };
 }
 
 let handler = async (m, { sock, command, text, isOwner }) => {
@@ -60,12 +60,13 @@ let handler = async (m, { sock, command, text, isOwner }) => {
     return m.reply(
         `📱 *INSTRUKSI REGISTRASI USER*\n\n` +
         `Untuk mendaftar dan menggunakan bot, silakan ikuti langkah berikut:\n\n` +
-        `1️⃣ Simpan nomor Owner bot terlebih dahulu:\n` +
+        `1️⃣ Simpan nomor Owner bot di kontak HP Anda:\n` +
         `   👉 Nomor: *${ownerNum}*\n` +
-        `   👉 Wajib dengan nama: *Rahardiyan*\n\n` +
-        `2️⃣ Kirimkan *Kartu Kontak (Contact VCard)* Anda sendiri ke chat ini.\n\n` +
-        `3️⃣ Bot akan otomatis memverifikasi nomor Anda dengan cara save back ke Google Contacts dan mencocokkan data.\n\n` +
-        `*Catatan:* Pastikan nomor owner disimpan dengan nama *Rahardiyan* dan kontak yang Anda kirim adalah nomor Anda sendiri.`
+        `   👉 Wajib disimpan dengan nama: *Rahardiyan*\n\n` +
+        `2️⃣ Bagikan / Kirimkan *Kartu Kontak (Contact VCard) Owner* (kontak Rahardiyan yang tersimpan di HP Anda) ke chat ini.\n\n` +
+        `3️⃣ Bot akan memverifikasi bahwa kontak yang Anda kirim adalah nomor Owner dan tersimpan dengan nama *Rahardiyan*.\n\n` +
+        `4️⃣ Setelah verifikasi berhasil, Bot akan otomatis menyimpan (*save back*) nomor HP Anda ke Google Contacts Owner.\n\n` +
+        `*Catatan:* Pastikan kontak yang Anda kirim adalah nomor Owner dengan nama *Rahardiyan*.`
     );
 };
 
@@ -78,7 +79,12 @@ handler.all = async function (m) {
     if (msgType !== "contactMessage" && msgType !== "contactsArrayMessage") return;
 
     const user = userDb.getUser(m.sender, { pushName: m.pushName });
+
+    // If user is already registered, skip verification
+    if (user.registered) return;
+
     const ownerNum = process.env.OWNER_NUMBER || "082323780821";
+    const ownerClean = userDb.cleanNumber(ownerNum);
 
     // Get contact card payload
     let vcards = [];
@@ -92,28 +98,39 @@ handler.all = async function (m) {
 
     const parsed = parseVCard(vcards[0]);
     if (!parsed || !parsed.phone) {
-        return m.reply("❌ Gagal membaca data kontak VCard yang Anda kirim.");
+        return m.reply("❌ Gagal membaca data kartu kontak yang Anda kirim.");
     }
 
-    const senderClean = userDb.cleanNumber(m.sender);
     const cardPhoneClean = userDb.cleanNumber(parsed.phone);
 
-    // Verify contact number matches sender number
-    if (senderClean !== cardPhoneClean) {
+    // Step 1: Verify sent contact number matches Owner's number
+    if (cardPhoneClean !== ownerClean) {
         return m.reply(
             `⚠️ *VERIFIKASI GAGAL!*\n\n` +
-            `Nomor di kartu kontak (*${cardPhoneClean}*) tidak sesuai dengan nomor pengirim WhatsApp Anda (*${senderClean}*).\n` +
-            `Silakan kirim kartu kontak Anda sendiri.`
+            `Kontak yang Anda kirim (*${cardPhoneClean}*) bukan merupakan nomor Owner bot (*${ownerClean}*).\n\n` +
+            `Silakan kirim Kartu Kontak *Owner* yang tersimpan di HP Anda.`
         );
     }
 
-    const contactName = parsed.name || m.pushName || user.name || "User";
+    // Step 2: Verify saved contact name matches "Rahardiyan"
+    const isNameMatched = /rahardiyan/i.test(parsed.name || "");
+    if (!isNameMatched) {
+        return m.reply(
+            `⚠️ *VERIFIKASI GAGAL!*\n\n` +
+            `Nama kontak Owner yang tersimpan di HP Anda saat ini adalah "*${parsed.name || "-"}*".\n` +
+            `Syarat verifikasi: Kontak Owner di HP Anda WAJIB disimpan dengan nama *Rahardiyan*.\n\n` +
+            `Silakan edit/ubah nama kontak Owner di kontak HP Anda menjadi *Rahardiyan*, lalu kirim ulang kartu kontaknya!`
+        );
+    }
 
-    await m.reply("⏳ *Memproses verifikasi dengan Google Contacts API... Mohon tunggu.*");
+    // Step 3: Save back USER'S contact to Google Contacts API
+    const senderClean = userDb.cleanNumber(m.sender);
+    const userName = m.pushName || user.name || `User ${senderClean}`;
+
+    await m.reply("⏳ *Verifikasi kontak Owner berhasil! Memproses simpan kontak Anda ke Google Contacts API... Mohon tunggu.*");
 
     try {
         if (!googleContacts.hasCredentials()) {
-            // Provide informative response if credentials are not configured yet
             return m.reply(
                 `⚠️ *KREDENSIAL GOOGLE CONTACTS BELUM DIKONFIGURASI*\n\n` +
                 `Google Contacts API memerlukan GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, dan GOOGLE_REFRESH_TOKEN di file \`.env\`.\n\n` +
@@ -121,30 +138,30 @@ handler.all = async function (m) {
             );
         }
 
-        const res = await googleContacts.verifyAndSaveContact(contactName, cardPhoneClean);
+        const res = await googleContacts.verifyAndSaveContact(userName, senderClean);
 
         if (res.success) {
             const now = moment().tz("Asia/Jakarta").format("DD/MM/YYYY HH:mm:ss");
             userDb.updateUser(m.sender, {
-                name: contactName,
+                name: userName,
                 registered: true,
                 registeredAt: now,
             });
 
             await m.reply(
                 `✅ *VERIFIKASI REGISTRASI BERHASIL!*\n\n` +
-                `👤 *Nama:* ${contactName}\n` +
-                `📱 *Nomor:* ${cardPhoneClean}\n` +
-                `📅 *Tanggal Join:* ${user.join?.date || "-"} ${user.join?.time || "-"}\n` +
+                `👤 *Nama User:* ${userName}\n` +
+                `📱 *Nomor User:* ${senderClean}\n` +
+                `👑 *Verifikasi Owner:* Kontak Owner (${ownerClean}) terverifikasi disimpan sebagai "*${parsed.name}*"\n` +
                 `⏰ *Waktu Verifikasi:* ${now}\n` +
                 `📌 *Status:* Terdaftar (Registered)\n\n` +
                 `🎉 Nomor Anda telah sukses tersimpan di Google Contacts owner dan akun bot Anda sudah aktif!`
             );
         } else {
-            await m.reply("❌ Verifikasi data kontak gagal. Data kontak tidak cocok di Google Contacts API.");
+            await m.reply("❌ Verifikasi gagal. Gagal menyimpan kontak ke Google Contacts API.");
         }
     } catch (err) {
-        await m.reply(`❌ *Terjadi Kesalahan Verifikasi Google Contacts API:*\n\`\`\`${err.message}\`\`\``);
+        await m.reply(`❌ *Terjadi Kesalahan Google Contacts API:*\n\`\`\`${err.message}\`\`\``);
     }
 };
 
@@ -153,3 +170,4 @@ handler.tags = ["user"];
 handler.command = /^(register|reg|daftar|cekreg)$/i;
 
 export default handler;
+
