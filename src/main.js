@@ -10,8 +10,10 @@
 import "./config.js";
 import { serialize } from "#core/message.js";
 import { useSQLiteAuthState } from "#auth";
-import { Browsers, fetchLatestBaileysVersion } from "baileys";
+import { Browsers, fetchLatestBaileysVersion } from "@whiskeysockets/baileys";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { inspect } from "node:util";
 import {
     loadPlugins,
     EventManager,
@@ -21,8 +23,8 @@ import {
 } from "#core/connection.js";
 import { naruyaizumi } from "#core/socket.js";
 
-const pairNum = global.config.pairingNumber;
-const pairCode = global.config.pairingCode;
+const getPairNum = () => global.config.pairingNumber;
+const getPairCode = () => global.config.pairingCode;
 
 let auth = null;
 let isDown = false;
@@ -37,7 +39,7 @@ const logger = () => {
         trace: 10,
     };
 
-    const curLvl = LVL[Bun.env.BAILEYS_LOG_LEVEL?.toLowerCase() || "silent"];
+    const curLvl = LVL[process.env.BAILEYS_LOG_LEVEL?.toLowerCase() || "silent"];
     const should = (lvl) => LVL[lvl] >= curLvl;
 
     const fmt = (val) => {
@@ -45,7 +47,7 @@ const logger = () => {
         if (val === undefined) return "undefined";
         if (val instanceof Error) return val.message || val.toString();
         if (typeof val === "object") {
-            return Bun.inspect(val, { colors: false, depth: 2 });
+            return inspect(val, { colors: false, depth: 2 });
         }
         return String(val);
     };
@@ -99,25 +101,27 @@ const logger = () => {
 };
 
 async function pair(sock) {
-    return new Promise((res) => {
-        const t = setTimeout(res, 3000);
+    if (sock.authState?.creds?.registered) return;
 
-        const chk = setInterval(() => {
-            if (sock.user || sock.ws?.readyState === 1) {
-                clearInterval(chk);
-                clearTimeout(t);
-                res();
-            }
-        }, 100);
-    }).then(async () => {
-        try {
-            let code = await sock.requestPairingCode(pairNum, pairCode);
-            code = code?.match(/.{1,4}/g)?.join("-") || code;
-            global.logger.info(`Pair code: ${code}`);
-        } catch (e) {
-            global.logger.error({ error: e.message }, "Pair error");
-        }
-    });
+    const pNum = getPairNum();
+    const pCode = getPairCode();
+
+    if (!pNum) {
+        global.logger.warn("PAIRING_NUMBER is empty in .env file!");
+        return;
+    }
+
+    try {
+        await new Promise((r) => setTimeout(r, 1000));
+        let code = await sock.requestPairingCode(pNum, pCode);
+        code = code?.match(/.{1,4}/g)?.join("-") || code;
+        console.log(`\n========================================`);
+        console.log(`  YOUR PAIRING CODE: ${code}`);
+        console.log(`========================================\n`);
+        global.logger.info(`Pair code: ${code}`);
+    } catch (e) {
+        global.logger.error({ error: e.message }, "Pair error");
+    }
 }
 
 async function LIORA() {
@@ -131,15 +135,25 @@ async function LIORA() {
     const opt = {
         version: v,
         logger: logger(),
-        browser: Browsers.macOS("Safari"),
+        browser: Browsers.ubuntu("Chrome"),
         auth: state,
+        markOnlineOnConnect: true,
+        generateHighQualityLinkPreview: true,
+        getMessage: async (key) => {
+            try {
+                const chat = await global.sock?.getChat?.(key.remoteJid);
+                return chat?.messages?.[key.id]?.message || undefined;
+            } catch {
+                return undefined;
+            }
+        },
     };
 
     global.sock = naruyaizumi(opt);
     global.sock.isInit = false;
 
-    if (!state.creds.registered && pairNum) {
-        await pair(global.sock);
+    if (!state.creds.registered && getPairNum()) {
+        pair(global.sock).catch(() => {});
     }
 
     const evt = new EventManager();
@@ -149,7 +163,7 @@ async function LIORA() {
 
     global.reloadHandler = await evt.createReloadHandler(opt, saveCreds);
 
-    const file = Bun.fileURLToPath(import.meta.url);
+    const file = fileURLToPath(import.meta.url);
     const src = dirname(file);
     const plugDir = join(src, "./plugins");
 

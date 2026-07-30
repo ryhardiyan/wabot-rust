@@ -5,31 +5,7 @@
  * @author Naruya Izumi
  */
 
-/**
- * Executes shell commands with owner-only access and safety restrictions
- * @async
- * @function handler
- * @param {Object} m - Message object
- * @param {Object} param1 - Destructured parameters
- * @param {Object} param1.sock - Connection object
- * @param {boolean} param1.isOwner - Whether user is bot owner
- * @returns {Promise<void>}
- *
- * @description
- * Command to execute shell commands in the bot's environment with safety features.
- * Includes command blocking for dangerous operations and flexible flag options.
- *
- * @features
- * - Executes shell commands via bash
- * - Blocks dangerous commands (rm, mkfs, etc.)
- * - Supports command flags (--cwd, --env, --timeout, --verbose)
- * - Shows command output and exit codes
- * - Handles errors gracefully
- * - Only accessible by bot owner
- * - Custom prefix pattern for terminal commands
- */
-
-import { $ } from "bun";
+import { exec } from "node:child_process";
 
 const blocked = [
     "rm -rf /",
@@ -61,13 +37,13 @@ const handler = async (m, { sock, isOwner }) => {
         cwd: null,
         env: {},
         quiet: true,
-        timeout: null,
+        timeout: 60000,
     };
 
     const re = /^--(\w+)(?:=(.+?))?(?:\s+|$)/;
     while (re.test(cmd)) {
-        const m = cmd.match(re);
-        const [all, f, v] = m;
+        const match = cmd.match(re);
+        const [all, f, v] = match;
 
         if (f === "cwd") {
             flags.cwd = v;
@@ -91,26 +67,24 @@ const handler = async (m, { sock, isOwner }) => {
 
     let out;
     try {
-        let c = $`bash -c ${cmd}`;
-        if (flags.cwd) {
-            c = c.cwd(flags.cwd);
-        }
-        if (Object.keys(flags.env).length > 0) {
-            c = c.env({ ...process.env, ...flags.env });
-        }
-        if (flags.quiet) {
-            c = c.quiet();
-        }
-        if (flags.timeout) {
-            c = c.timeout(flags.timeout);
-        }
+        const options = {
+            timeout: flags.timeout || 60000,
+            env: { ...process.env, ...flags.env },
+            cwd: flags.cwd || process.cwd(),
+            maxBuffer: 1024 * 1024 * 10,
+        };
 
-        const r = await c.nothrow();
-        const stdout = r.stdout?.toString() || "";
-        const stderr = r.stderr?.toString() || "";
-        const exit = r.exitCode;
+        const { stdout, stderr } = await new Promise((resolve) => {
+            exec(cmd, options, (error, stdout, stderr) => {
+                resolve({
+                    error,
+                    stdout: stdout || "",
+                    stderr: stderr || (error ? error.message : ""),
+                });
+            });
+        });
+
         const output = stdout || stderr || "(no output)";
-
         const parts = [`${cmd}`, "─".repeat(30)];
 
         if (output.trim()) {
@@ -118,9 +92,6 @@ const handler = async (m, { sock, isOwner }) => {
         }
 
         const foot = [];
-        if (exit !== 0) {
-            foot.push(`Exit: ${exit}`);
-        }
         if (flags.cwd) {
             foot.push(`📁 ${flags.cwd}`);
         }
@@ -137,16 +108,7 @@ const handler = async (m, { sock, isOwner }) => {
     await sock.sendMessage(m.chat, { text: out });
 };
 
-/**
- * Custom prefix pattern for terminal commands
- * @property {RegExp} customPrefix - Pattern matching terminal commands
- */
 handler.customPrefix = /^\$ /;
-
-/**
- * Command metadata for help system
- * @property {RegExp} command - Command pattern matching
- */
 handler.command = /(?:)/i;
 
 export default handler;

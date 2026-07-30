@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 /**
  * Displays interactive bot menu and command help
  * @async
@@ -127,7 +129,7 @@ async function main(sock, m, pkg, prefix, time) {
         `Version : ${pkg.version}`,
         `License : ${pkg.license}`,
         `Type    : ${pkg.type}`,
-        `Runtime : Bun ${Bun.version}`,
+        `Runtime : Node.js ${process.version}`,
         `VPS Up  : ${upSys}`,
         `Bot Up  : ${upBot}`,
         "",
@@ -237,7 +239,7 @@ function fmt(sec) {
  */
 function getPkg() {
     try {
-        return Bun.file("./package.json").json();
+        return JSON.parse(fs.readFileSync("./package.json", "utf-8"));
     } catch {
         return {
             name: "Unknown",

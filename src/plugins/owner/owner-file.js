@@ -5,7 +5,7 @@
  * @author Naruya Izumi
  */
 
-import { readdir, mkdir } from "node:fs/promises";
+import { readdir, mkdir, writeFile, readFile, unlink, access } from "node:fs/promises";
 import { join, resolve, extname, basename, dirname, relative } from "node:path";
 
 let handler = async (m, { sock, args, usedPrefix, command }) => {
@@ -66,42 +66,40 @@ ${list}`);
                 const fp = resolve(t, name);
 
                 await mkdir(dirname(fp), { recursive: true });
-                await Bun.write(fp, buf);
+                await writeFile(fp, buf);
 
                 return m.reply(`Saved: ${relative(process.cwd(), fp)}`);
             }
 
             case "d": {
                 if (args.length < 2) {
-                    return m.reply(`Need file path
-Ex: ${usedPrefix + command} d plugins owner file`);
+                    return m.reply(`Need file path\nEx: ${usedPrefix + command} d plugins owner file`);
                 }
 
                 let t = join(...args.slice(1));
                 if (!extname(t)) t += ".js";
 
                 const fp = resolve(process.cwd(), t);
-                const f = Bun.file(fp);
-
-                if (!(await f.exists())) {
+                try {
+                    await access(fp);
+                } catch {
                     return m.reply(`File not found: ${fp}`);
                 }
 
-                await f.delete();
+                await unlink(fp);
                 return m.reply("File deleted");
             }
 
             case "g": {
                 if (args.length < 2) {
-                    return m.reply(`Need file path
-Ex: ${usedPrefix + command} g plugins owner file`);
+                    return m.reply(`Need file path\nEx: ${usedPrefix + command} g plugins owner file`);
                 }
 
                 let t = join(...args.slice(1));
                 if (!extname(t)) t += ".js";
 
                 const fp = join(process.cwd(), t);
-                const buf = Buffer.from(await Bun.file(fp).arrayBuffer());
+                const buf = await readFile(fp);
                 const name = basename(t);
 
                 await sock.sendMessage(

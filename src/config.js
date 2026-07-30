@@ -1,3 +1,29 @@
+import { inspect } from "node:util";
+import { readFileSync, existsSync } from "node:fs";
+
+try {
+    if (existsSync(".env")) {
+        if (typeof process.loadEnvFile === "function") {
+            process.loadEnvFile(".env");
+        } else {
+            const envLines = readFileSync(".env", "utf-8").split(/\r?\n/);
+            for (const line of envLines) {
+                const trimmed = line.trim();
+                if (trimmed && !trimmed.startsWith("#") && trimmed.includes("=")) {
+                    const idx = trimmed.indexOf("=");
+                    const k = trimmed.slice(0, idx).trim();
+                    const v = trimmed.slice(idx + 1).trim();
+                    if (k && !process.env[k]) {
+                        process.env[k] = v.replace(/^["']|["']$/g, "");
+                    }
+                }
+            }
+        }
+    }
+} catch {
+    // Silent fail
+}
+
 /**
  * @file Configuration and initialization module
  * @module config
@@ -81,8 +107,8 @@ const parseBoolean = (value, defaultValue) => {
 const initializeLogger = () => {
     if (globalThis.logger) return globalThis.logger;
 
-    const logLevel = (Bun.env.LOG_LEVEL || "info").toLowerCase();
-    const usePretty = parseBoolean(Bun.env.LOG_PRETTY, true);
+    const logLevel = (process.env.LOG_LEVEL || "info").toLowerCase();
+    const usePretty = parseBoolean(process.env.LOG_PRETTY, true);
 
     /**
      * Log level numeric values (Syslog compatible)
@@ -174,7 +200,7 @@ const initializeLogger = () => {
             if (value === null) formattedValue = "null";
             else if (value === undefined) formattedValue = "undefined";
             else if (typeof value === "object") {
-                formattedValue = Bun.inspect(value, { colors: false, depth: 1 });
+                formattedValue = inspect(value, { colors: false, depth: 1 });
             } else if (typeof value === "boolean") {
                 formattedValue = value ? "true" : "false";
             } else if (typeof value === "number") {
@@ -348,7 +374,7 @@ const logger = initializeLogger();
  * 3. Auto-generation (pairing codes)
  */
 const initializeConfig = () => {
-    const ownersEnv = (Bun.env.OWNERS || "").trim();
+    const ownersEnv = (process.env.OWNERS || "").trim();
     let owners = [];
 
     // Parse owners from environment
@@ -381,14 +407,14 @@ const initializeConfig = () => {
      */
     const config = {
         owner: owners,
-        pairingNumber: (Bun.env.PAIRING_NUMBER || "").trim(),
-        pairingCode: (Bun.env.PAIRING_CODE || "").trim().toUpperCase() || generatePairingCode(),
-        watermark: Bun.env.WATERMARK || "Liora",
-        author: Bun.env.AUTHOR || "Naruya Izumi",
-        stickpack: Bun.env.STICKPACK || "Liora",
-        stickauth: Bun.env.STICKAUTH || "© Naruya Izumi",
-        thumbnailUrl: sanitizeUrl(Bun.env.THUMBNAIL_URL),
-        self: parseBoolean(Bun.env.SELF, false),
+        pairingNumber: (process.env.PAIRING_NUMBER || "").trim(),
+        pairingCode: (process.env.PAIRING_CODE || "").trim().toUpperCase() || generatePairingCode(),
+        watermark: process.env.WATERMARK || "Liora",
+        author: process.env.AUTHOR || "Naruya Izumi",
+        stickpack: process.env.STICKPACK || "Liora",
+        stickauth: process.env.STICKAUTH || "© Naruya Izumi",
+        thumbnailUrl: sanitizeUrl(process.env.THUMBNAIL_URL),
+        self: parseBoolean(process.env.SELF, false),
     };
 
     // Validate pairing code format

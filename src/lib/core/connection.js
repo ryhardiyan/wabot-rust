@@ -9,7 +9,7 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative, normalize } from "node:path";
 import { naruyaizumi } from "./socket.js";
-import { DisconnectReason } from "baileys";
+import { DisconnectReason } from "@whiskeysockets/baileys";
 import initAllWebhooks from "./orderkuota.js";
 
 export async function getAllPlugins(dir) {
@@ -178,8 +178,8 @@ export class EventManager {
 
                     await new Promise((resolve) => setTimeout(resolve, 100));
 
-                    if (typeof Bun !== "undefined" && typeof Bun.gc === "function") {
-                        Bun.gc(false);
+                    if (typeof global.gc === "function") {
+                        global.gc();
                     }
                 } catch {
                     // Silent fail

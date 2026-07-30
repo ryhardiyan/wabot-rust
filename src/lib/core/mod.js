@@ -12,7 +12,7 @@ import {
     prepareWAMessageMedia,
     generateWAMessageFromContent,
     generateWAMessage,
-} from "baileys";
+} from "@whiskeysockets/baileys";
 
 /**
  * Advanced message sender with rich media support

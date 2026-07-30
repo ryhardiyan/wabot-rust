@@ -8,7 +8,7 @@
  */
 
 import { smsg } from "./smsg.js";
-import { proto, areJidsSameUser, extractMessageContent } from "baileys";
+import { proto, areJidsSameUser, extractMessageContent } from "@whiskeysockets/baileys";
 
 const MEDIA_TYPES = new Set([
     "imageMessage",

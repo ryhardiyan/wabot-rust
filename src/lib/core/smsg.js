@@ -7,7 +7,7 @@
  * @author Naruya Izumi
  */
 
-import { proto } from "baileys";
+import { proto } from "@whiskeysockets/baileys";
 
 const SYM_PROCESSED = Symbol.for("smsg.processed");
 

@@ -29,6 +29,8 @@
  * - Custom prefix pattern for evaluation
  */
 
+import { inspect } from "node:util";
+
 let handler = async (m, { sock, noPrefix, isOwner }) => {
     if (!isOwner) return;
     let t = noPrefix;
@@ -46,11 +48,11 @@ let handler = async (m, { sock, noPrefix, isOwner }) => {
 
     let out;
     if (Array.isArray(r) && r.every((i) => i && typeof i === "object" && !Array.isArray(i))) {
-        out = Bun.inspect(r, { depth: null, maxArrayLength: null });
+        out = inspect(r, { depth: null, maxArrayLength: null });
     } else if (typeof r === "string") {
         out = r;
     } else {
-        out = Bun.inspect(r, { depth: null, maxArrayLength: null });
+        out = inspect(r, { depth: null, maxArrayLength: null });
     }
 
     await sock.sendMessage(m.chat, { text: out });

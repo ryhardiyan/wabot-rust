@@ -14,7 +14,7 @@ import {
     areJidsSameUser,
     WAMessageStubType,
     downloadContentFromMessage,
-} from "baileys";
+} from "@whiskeysockets/baileys";
 
 const isGroupJid = (id) => id && id.endsWith("@g.us");
 const isStatusJid = (id) => !id || id === "status@broadcast";

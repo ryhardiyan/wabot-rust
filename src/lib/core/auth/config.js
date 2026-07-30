@@ -9,7 +9,7 @@
 
 import path from "path";
 
-export const DEFAULT_DB = path.join(process.cwd(), "src", "database", "auth.db");
+export const DEFAULT_DB = path.join(process.cwd(), "src", "database", "database.json");
 
 export const makeKey = (type, id) => `${type}-${id}`;
 

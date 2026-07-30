@@ -6,7 +6,7 @@
  * @author Naruya Izumi
  */
 
-import { BufferJSON } from "baileys";
+import { BufferJSON } from "@whiskeysockets/baileys";
 
 const TTL = {
     CHAT: 604800000,

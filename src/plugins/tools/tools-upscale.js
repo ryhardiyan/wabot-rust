@@ -1,6 +1,6 @@
 import axios from 'axios';
 import FormData from 'form-data';
-import { delay } from 'baileys';
+import { delay } from '@whiskeysockets/baileys';
 
 /**
  * ENGINE 1: ImgLarger (Menggunakan Buffer)

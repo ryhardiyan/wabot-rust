@@ -9,6 +9,7 @@
 
 import { smsg } from "#core/smsg.js";
 import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const CMD_PREFIX_RE = /^[/]/;
 
@@ -80,46 +81,38 @@ async function printMessage(
     }
 ) {
     try {
-        if (!m || !m.sender || !m.chat || !m.mtype) return;
+        if (!m || !m.sender || !m.chat) return;
 
-        const sender = sock.decodeJid(m.sender);
-        const chat = sock.decodeJid(m.chat);
-        const user = (await sock.getName(sender)) || "Unknown";
+        const time = new Date().toTimeString().slice(0, 8);
+        const sender = sock.decodeJid ? sock.decodeJid(m.sender) : m.sender;
+        const senderNum = sender ? sender.split("@")[0] : "Unknown";
+        let userName = m.pushName || (typeof m.name === "string" ? m.name : "");
+        if (!userName || userName === "Unknown") {
+            try {
+                userName = (await sock.getName?.(sender)) || "Unknown";
+            } catch {
+                userName = "Unknown";
+            }
+        }
 
-        const getIdFormat = (id) => {
-            if (id?.endsWith("@lid")) return "LID";
-            if (id?.endsWith("@s.whatsapp.net")) return "PN";
-            if (id?.startsWith("@")) return "Username";
-            return "Unknown";
-        };
+        const chatJid = sock.decodeJid ? sock.decodeJid(m.chat) : m.chat;
+        const isGroup = chatJid?.endsWith("@g.us");
+        const chatContext = isGroup ? `Group (${chatJid})` : `Private (${chatJid})`;
 
-        const getChatContext = (id) => {
-            if (id?.endsWith("@g.us")) return "Group";
-            if (id?.endsWith("@broadcast")) return "Broadcast";
-            if (id?.endsWith("@newsletter")) return "Channel";
-            if (id?.endsWith("@lid") || id?.endsWith("@s.whatsapp.net")) return "Private";
-            return "Unknown";
-        };
+        const mtype = m.mtype || "unknown";
+        const content = typeof m.text === "string" && m.text.trim()
+            ? m.text.trim()
+            : m.caption
+            ? m.caption.trim()
+            : `[${mtype}]`;
 
-        const rawText = m.text?.trim() || "";
-        const prefixMatch = rawText.match(/^([/!.])\s*(\S+)/);
-        const prefix = m.prefix || (prefixMatch ? prefixMatch[1] : null);
-        const command = m.command || (prefixMatch ? prefixMatch[2] : null);
-        if (!prefix || !command) return;
-
-        const cmd = `${prefix}${command}`;
-        const idFormat = getIdFormat(sender);
-        const chatContext = getChatContext(chat);
-
-        global.logger.info(
-            {
-                user: user,
-                sender: sender,
-                idFormat: idFormat,
-                chatContext: chatContext,
-            },
-            `${cmd} executed`
-        );
+        console.log(`\n==================================================`);
+        console.log(`📩 [${time}] PESAN MASUK`);
+        console.log(`👤 User    : ${userName} (${senderNum})`);
+        console.log(`💬 Chat    : ${chatContext}`);
+        console.log(`📌 Type    : ${mtype}`);
+        console.log(`📄 Message : ${content}`);
+        console.log(`==================================================`);
     } catch {
         // Silent fail
     }
@@ -135,8 +128,9 @@ export async function handler(chatUpdate) {
         if (!messages || messages.length === 0) return;
 
         const m = smsg(this, messages[messages.length - 1]);
-        if (m.fromMe || !m || m.isBaileys) return;
-        // m.fromMe jika di hapus, nomor bot bisa merespon bot itu sendiri. jika m.fromMe di pasang. maka bot mengabaikan pesan dari.bot itu sndri
+        if (!m || m.isBaileys) return;
+
+        await safe(() => printMessage(m, this));
 
         const senderLid = m.sender ? m.sender.split("@")[0] : "";
         const regOwners = global.config.owner.map((id) => id.toString().split("@")[0]);
@@ -193,7 +187,7 @@ Maka kondisi global.config.self bernilai salah (false). Karena menggunakan logik
             isBotAdmin = bot?.admin === "admin" || bot?.admin === "superadmin";
         }
 
-        const __dirname = dirname(Bun.fileURLToPath(import.meta.url));
+        const __dirname = dirname(fileURLToPath(import.meta.url));
         const pluginDir = join(__dirname, "./plugins");
 
         for (const name in global.plugins) {
@@ -275,8 +269,39 @@ Maka kondisi global.config.self bernilai salah (false). Karena menggunakan logik
 
                 try {
                     await plugin.call(this, m, extra);
-                } catch {
-                    await safe(() => m.reply("Something went wrong."));
+                } catch (e) {
+                    const time = new Date().toTimeString().slice(0, 8);
+                    const userName = m.pushName || m.name || "Unknown";
+                    const senderNum = m.sender ? m.sender.split("@")[0] : "Unknown";
+                    const errorMsg = e?.message || String(e);
+                    const errorStack = e?.stack || errorMsg;
+
+                    console.error(`\n==================================================`);
+                    console.error(`❌ [${time}] ERROR SAAT MENJALANKAN FITUR: ${name}`);
+                    console.error(`👤 User    : ${userName} (${senderNum})`);
+                    console.error(`💬 Chat    : ${m.chat}`);
+                    console.error(`⚡ Command : ${usedPrefix}${command}`);
+                    console.error(`⚠️ Error   : ${errorMsg}`);
+                    console.error(`📜 Stack   :\n${errorStack}`);
+                    console.error(`==================================================\n`);
+
+                    if (global.logger?.error) {
+                        global.logger.error(
+                            {
+                                plugin: name,
+                                command: `${usedPrefix}${command}`,
+                                user: senderNum,
+                                chat: m.chat,
+                                error: errorMsg,
+                                stack: errorStack,
+                            },
+                            `Plugin Execution Error in ${name}`
+                        );
+                    }
+
+                    await safe(() =>
+                        m.reply(`⚠️ *Terjadi Kesalahan pada fitur (${usedPrefix}${command}):*\n\`\`\`${errorMsg}\`\`\``)
+                    );
                 }
 
                 break;
