@@ -82,6 +82,7 @@ cargo test
 ```
 
 GitHub Actions (`.github/workflows/ci.yml`) menjalankan `cargo fmt --check`, `cargo check --all-targets`, dan `cargo test` pada push/pull request.
+GitHub Actions juga membuild biner Linux statis (musl) untuk `amd64` dan `arm64` lewat `.github/workflows/build-linux.yml`. Artefact bernama `wabot-rust-linux-amd64` dan `wabot-rust-linux-arm64`, masing-masing disertai file `.sha256`. Cache registry Cargo dan direktori build di-key per target agar build ulang lebih cepat.
 
 ## Struktur singkat
 

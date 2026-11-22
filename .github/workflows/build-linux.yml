@@ -1,0 +1,66 @@
+name: Build Linux Binaries
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            arch: amd64
+          - target: aarch64-unknown-linux-musl
+            arch: arm64
+    env:
+      BIN_NAME: mywa-sockets
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          shared-key: linux-${{ matrix.arch }}
+          cache-on-failure: true
+          cache-all-crates: true
+
+      - name: Install cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Build ${{ matrix.arch }}
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Package binary
+        run: |
+          set -euo pipefail
+          output="wabot-rust-linux-${{ matrix.arch }}"
+          cp "target/${{ matrix.target }}/release/${BIN_NAME}" "$output"
+          chmod +x "$output"
+          sha256sum "$output" > "$output.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wabot-rust-linux-${{ matrix.arch }}
+          path: |
+            wabot-rust-linux-${{ matrix.arch }}
+            wabot-rust-linux-${{ matrix.arch }}.sha256
+          if-no-files-found: error
