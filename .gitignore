@@ -1,5 +1,16 @@
 node_modules/
 package-lock.json
+/target/
+/tmp/*
+!/tmp/.gitkeep
+/database/*.db*
+/database/*.sqlite*
 src/database/*.json
 src/database/*.db*
 *.log
+
+# rahasia & cadangan
+.env
+.env.*
+!.env.example
+/backups/
