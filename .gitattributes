@@ -1,0 +1,10 @@
+# GitHub Linguist: pastikan statistik bahasa hanya menghitung sumber aktif.
+# Repo ini sudah full Rust (commit 3ee8f51b menghapus seluruh kode JavaScript).
+# Baris di bawah mencegah file JS lama/tersisa ikut terhitung jika cache
+# statistik bahasa GitHub belum tersegarkan, sekaligus memicu analisis ulang.
+*.js   linguist-detectable=false
+*.mjs  linguist-detectable=false
+*.cjs  linguist-detectable=false
+*.jsx  linguist-detectable=false
+*.ts   linguist-detectable=false
+*.tsx  linguist-detectable=false
