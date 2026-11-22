@@ -1,6 +1,6 @@
 # MyWa Sockets
 
-Bot WhatsApp "Luoyisse" — versi **Rust** (Tokio + `whatsapp-rust`), hasil migrasi dari implementasi Bun/JavaScript.
+Bot WhatsApp "Luoyisse" — ditulis penuh dalam **Rust** (Tokio + `whatsapp-rust`). Tidak ada runtime JavaScript/Node/Bun.
 
 ## Ringkasan
 
@@ -107,7 +107,7 @@ backups/                # hasil /backup (diabaikan git)
 
 ## Status migrasi
 
-Kode Rust (`*.rs`) adalah sumber utama. Masih ada file JavaScript lama (`*.js`) yang **tidak diregister** oleh `mod.rs`; aman dihapus setelah migrasi dinyatakan stabil.
+Migrasi selesai: seluruh kode adalah Rust (`*.rs`), tanpa file JavaScript. Plugin didaftarkan saat kompilasi melalui `mod.rs`; perubahan plugin memerlukan build ulang.
 
 ## Lisensi
 

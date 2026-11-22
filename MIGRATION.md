@@ -1,8 +1,8 @@
 # MyWa Sockets — Rust migration
 
 Registry saat ini: **48 plugin aktif, 110 alias command**, serta satu modul
-Getcontact yang tetap nonaktif seperti sumber JS. Ini adaptasi fungsional,
-bukan klaim kesetaraan 1:1 seluruh scraper/UI JavaScript.
+Getcontact yang tetap nonaktif seperti implementasi lama. Ini adaptasi
+fungsional, bukan klaim kesetaraan 1:1 seluruh scraper/UI lama.
 
 ## Build dan jalankan
 
@@ -37,10 +37,10 @@ Variabel lama dipertahankan: `OWNERS` (CSV atau JSON array), `PAIRING_NUMBER`,
 `SELF`, `LOG_LEVEL`, `LOG_PRETTY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
 `GOOGLE_REFRESH_TOKEN`, `OWNER_NUMBER`, `GITHUB_TOKEN`, `SERVER_PORT`.
 Loader memakai dotenvy terlebih dahulu dan mendukung value lama ber-spasi
-tanpa quote seperti loader JS; `.env` tidak ditulis ulang. Environment proses
+tanpa quote seperti loader lama; `.env` tidak ditulis ulang. Environment proses
 mengalahkan nilai file.
-Jika parser kompatibilitas diperlukan, nilai dibaca literal seperti JS lama
-(tanpa ekspansi `${VAR}` atau escape multiline).
+Jika parser kompatibilitas diperlukan, nilai dibaca literal seperti implementasi
+lama (tanpa ekspansi `${VAR}` atau escape multiline).
 
 Tambahan opsional:
 
@@ -57,7 +57,7 @@ Tambahan opsional:
 | `PAYMENTKU_API_KEY` | wajib untuk `/depo`; token tidak di-hardcode |
 | `ANABOT_API_KEY` | `freeApikey` |
 | `ACRCLOUD_ACCESS_KEY`, `ACRCLOUD_ACCESS_SECRET`, `ACRCLOUD_HOST` | fallback pengenalan musik; host default identify-us-west-2.acrcloud.com |
-| `MINECRAFT_SERVER` | alamat default dari implementasi JS lama |
+| `MINECRAFT_SERVER` | alamat default dari implementasi lama |
 
 Endpoint webhook tetap `GET /orkut?data=...` dan
 `GET /callback?refid=...&message=...`. Semua request menyertakan
@@ -67,8 +67,8 @@ Untuk akses eksternal, gunakan reverse proxy HTTPS dan konfigurasi bind eksplisi
 
 ## Adaptasi perilaku yang disengaja
 
-- File JS asli tetap tersedia sebagai referensi; runtime Rust tidak memanggil
-  Node/Bun atau menggunakan dynamic import. Perubahan plugin membutuhkan build/restart.
+- Seluruh kode kini hanya Rust; runtime tidak memanggil Node/Bun atau menggunakan
+  dynamic import. Perubahan plugin membutuhkan build/restart.
 - Reconnect/backoff memakai lifecycle upstream `Client::run`, bukan loop kedua
   di luar client; logout berhenti tanpa menghapus atau mereset sesi otomatis.
 - Sesi Baileys tidak disalin sebagai kredensial Signal Rust. Gunakan pairing
@@ -84,18 +84,18 @@ Untuk akses eksternal, gunakan reverse proxy HTTPS dan konfigurasi bind eksplisi
   dan pembaruan memori selesai, termasuk ketika future pemanggil dibatalkan.
 - Typo `onwer` di hdvideo/wink diperbaiki menjadi owner-only. Upload GitHub dan
   read-view-once juga owner-only. Cloudflare/convert menerapkan izin owner di metadata.
-- Getcontact tetap tidak aktif: pada JS asli `handler.command` dikomentari.
+- Getcontact tetap tidak aktif: pada implementasi lama `handler.command` dikomentari.
   Tidak ada token hardcoded yang disalin dan tidak ada debit layanan itu.
 - Plugin musik menggunakan Doreso dengan polling terbatas dan fallback ACRCloud
   HMAC-SHA1 bila dikonfigurasi; secret hardcoded lama tidak disalin.
 - `/file` memakai path relatif proyek dan tidak mengirim file `.env`/sesi.
   Command shell/eval owner tetap menjalankan kode dengan hak proses bot;
   jalankan deployment sebagai user OS non-root dan gunakan daftar owner terbatas.
-- Spotify/Twitter memakai API helper downloader yang sudah ada di JS, bukan
+- Spotify/Twitter memakai API helper downloader yang sudah ada di implementasi lama, bukan
   scraper Spotmate/GraphQL X per-plugin. Kontrak provider eksternal dapat berubah.
 - Pencarian/menu/detail API dikirim sebagai teks atau JSON, bukan carousel/tombol
   interaktif lama. Statistik grup berbentuk teks. QC memakai renderer teks lokal
-  ffmpeg tanpa avatar/bubble identik Canvas JS.
+  ffmpeg tanpa avatar/bubble identik Canvas implementasi lama.
 - Konverter Clash mengirim JSON dalam file `.yaml`: JSON merupakan subset YAML 1.2.
   Konfigurasi dasarnya diperkecil dan controller diikat ke localhost.
 - Kredensial Cloudflare baru disimpan di `database/cloudflare.json`; kredensial
@@ -109,7 +109,7 @@ Untuk akses eksternal, gunakan reverse proxy HTTPS dan konfigurasi bind eksplisi
 Build/check/test offline menguji kompilasi API, registry, parser, izin, database
 atomik, cache, batas media, stiker, dan HTTP fixture lokal. Tidak membuktikan
 pairing akun riil, pengiriman WA, API provider produksi, pembayaran riil,
-profil RAM produksi, atau kesetaraan UI/fitur penuh terhadap seluruh JS.
+profil RAM produksi, atau kesetaraan UI/fitur penuh terhadap implementasi lama.
 
 Untuk uji penerimaan: pairing akun uji; kirim `/register`, `/ping`, `/menu`;
 verifikasi penolakan command owner dari akun lain; coba media kecil; uji group
