@@ -25,6 +25,7 @@ pub struct App {
     pub http: reqwest::Client,
     pub db: Arc<UserDatabase>,
     pub verify: Arc<VerifyDb>,
+    pub ai: Arc<crate::ai::session::AiSession>,
     pub store: Store,
     pub registry: Registry,
     pub started: Instant,

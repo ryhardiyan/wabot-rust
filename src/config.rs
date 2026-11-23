@@ -26,6 +26,22 @@ pub struct Config {
     pub verify_db_path: PathBuf,
     /// File SQLite untuk statistik pemakaian plugin (PLUGIN_DB).
     pub plugin_db_path: PathBuf,
+    /// Endpoint REST OpenAI-compatible untuk fitur AI owner-only (AI_API_URL).
+    pub ai_api_url: String,
+    /// Kunci API toolwiz (AI_API_KEY).
+    pub ai_api_key: String,
+    /// Model yang dipakai (AI_MODEL).
+    pub ai_model: String,
+    /// File SQLite riwayat chat AI (AI_DB).
+    pub ai_db_path: PathBuf,
+    /// Akar path yang boleh diakses tool AI (AI_ROOT).
+    pub ai_root: PathBuf,
+    /// Maksimal putaran pemanggilan tool per permintaan (AI_MAX_TURNS).
+    pub ai_max_turns: usize,
+    /// Jumlah giliran user yang disimpan dalam riwayat (AI_HISTORY_MESSAGES).
+    pub ai_history_messages: usize,
+    /// Izinkan tool AI mengakses .env/database/sesi (AI_ALLOW_SECRETS).
+    pub ai_allow_secrets: bool,
     pub max_media_bytes: usize,
     pub max_concurrent: usize,
     pub rate_limit: u32,
@@ -145,6 +161,25 @@ impl Config {
         let required_name = get("REQUIRED_NAME", "Rahardiyan");
         let verify_db_path = PathBuf::from(get("VERIFY_DB", "database/users.db"));
         let plugin_db_path = PathBuf::from(get("PLUGIN_DB", "database/plugins.db"));
+        let ai_api_url = get("AI_API_URL", "https://ai.toolwiz.id/v1");
+        if !ai_api_url.trim().is_empty() {
+            let parsed = reqwest::Url::parse(&ai_api_url).context("AI_API_URL tidak valid")?;
+            anyhow::ensure!(
+                matches!(parsed.scheme(), "http" | "https"),
+                "AI_API_URL harus http/https"
+            );
+        }
+        let ai_api_key = get("AI_API_KEY", "");
+        let ai_model = get("AI_MODEL", "rmod/hy4-flash-free");
+        let ai_db_path = PathBuf::from(get("AI_DB", "database/ai.db"));
+        let ai_root = PathBuf::from(get("AI_ROOT", "."));
+        let ai_max_turns: usize = get("AI_MAX_TURNS", "8").parse()?;
+        let ai_history_messages: usize = get("AI_HISTORY_MESSAGES", "40").parse()?;
+        anyhow::ensure!(
+            ai_max_turns > 0 && ai_history_messages > 0,
+            "AI_MAX_TURNS dan AI_HISTORY_MESSAGES harus positif"
+        );
+        let ai_allow_secrets = get("AI_ALLOW_SECRETS", "false").eq_ignore_ascii_case("true");
         Ok(Self {
             owners: owners
                 .iter()
@@ -169,6 +204,14 @@ impl Config {
             required_name,
             verify_db_path,
             plugin_db_path,
+            ai_api_url,
+            ai_api_key,
+            ai_model,
+            ai_db_path,
+            ai_root,
+            ai_max_turns,
+            ai_history_messages,
+            ai_allow_secrets,
             max_media_bytes,
             max_concurrent,
             rate_limit,

@@ -4,6 +4,8 @@ use super::Registry;
 mod minecraft_server;
 #[path = "owner-acc.rs"]
 mod owner_acc;
+#[path = "owner-ai.rs"]
+mod owner_ai;
 #[path = "owner-backup.rs"]
 mod owner_backup;
 #[path = "owner-eval.rs"]
@@ -22,6 +24,7 @@ mod user_manage;
 pub(super) fn register(plugins: &mut Registry) {
     plugins.extend([
         Box::new(owner_acc::Command) as Box<dyn crate::plugins::Plugin>,
+        Box::new(owner_ai::Command),
         Box::new(minecraft_server::Command) as Box<dyn crate::plugins::Plugin>,
         Box::new(owner_eval::Command),
         Box::new(owner_exec::Command),
