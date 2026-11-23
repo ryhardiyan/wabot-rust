@@ -131,7 +131,7 @@ async fn run(root: &Path, allow_secrets: bool, name: &str, raw: &str) -> Result<
             Ok(format!("OK: {} dihapus", path.display()))
         }
         "list_dir" => {
-            let requested = field(&args, "path").unwrap_or_default().unwrap_or_default();
+            let requested = field(&args, "path").ok().unwrap_or("");
             let path = if requested.trim().is_empty() {
                 root.to_path_buf()
             } else {
@@ -213,7 +213,7 @@ fn field<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
 
 /// Path relatif terhadap root. Menolak `..` yang keluar dari root dan file
 /// sensitif kecuali `allow_secrets` aktif.
-fn resolve(root: &Path, value: &str, allow_secrets: bool) -> Result<PathBuf> {
+async fn resolve(root: &Path, value: &str, allow_secrets: bool) -> Result<PathBuf> {
     let value = value.trim();
     anyhow::ensure!(!value.is_empty(), "Path kosong");
     let canonical_root = tokio::fs::canonicalize(root).await?;
