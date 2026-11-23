@@ -122,15 +122,18 @@ impl Stats {
             let Ok(mut inner) = self.inner.lock() else {
                 return;
             };
-            let stat = inner.per_command.entry(command.to_string()).or_default();
-            let millis = elapsed.as_millis().min(u64::MAX as u128) as u64;
-            stat.total_ms = stat.total_ms.saturating_add(millis);
-            stat.last_used = chrono::Utc::now().timestamp();
-            match outcome {
-                Outcome::Ok => stat.ok += 1,
-                Outcome::Fail => stat.fail += 1,
-                Outcome::Timeout => stat.timeout += 1,
-            }
+            let stat = {
+                let stat = inner.per_command.entry(command.to_string()).or_default();
+                let millis = elapsed.as_millis().min(u64::MAX as u128) as u64;
+                stat.total_ms = stat.total_ms.saturating_add(millis);
+                stat.last_used = chrono::Utc::now().timestamp();
+                match outcome {
+                    Outcome::Ok => stat.ok += 1,
+                    Outcome::Fail => stat.fail += 1,
+                    Outcome::Timeout => stat.timeout += 1,
+                }
+                *stat
+            };
             if !matches!(outcome, Outcome::Ok) {
                 let message = match outcome {
                     Outcome::Timeout => "timeout".to_string(),
