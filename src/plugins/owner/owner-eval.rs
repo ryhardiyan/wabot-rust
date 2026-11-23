@@ -3,7 +3,6 @@ use anyhow::Result;
 crate::plugins::plugin!(
     &["eval"],
     "owner",
-    "Evaluasi ekspresi Rust melalui rustc",
     execute,
     owner_only = true,
     custom_prefix = Some("> ")

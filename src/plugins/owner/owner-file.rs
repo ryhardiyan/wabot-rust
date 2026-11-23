@@ -1,13 +1,7 @@
 use crate::plugins::Context;
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
-crate::plugins::plugin!(
-    &["file", "f"],
-    "owner",
-    "Baca/simpan/hapus file dalam direktori proyek",
-    execute,
-    owner_only = true
-);
+crate::plugins::plugin!(&["file", "f"], "owner", execute, owner_only = true);
 async fn resolve(parts: &[String]) -> Result<PathBuf> {
     let root = tokio::fs::canonicalize(".").await?;
     let relative = parts.iter().collect::<PathBuf>();

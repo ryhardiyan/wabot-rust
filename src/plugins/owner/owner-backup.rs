@@ -2,13 +2,7 @@ use crate::plugins::Context;
 use anyhow::{Context as _, Result};
 use std::path::{Path, PathBuf};
 
-crate::plugins::plugin!(
-    &["backup"],
-    "owner",
-    "Cadangkan data bot ke direktori backups/",
-    execute,
-    owner_only = true
-);
+crate::plugins::plugin!(&["backup"], "owner", execute, owner_only = true);
 
 async fn copy_sources(root: &Path, sources: &[(&str, PathBuf)]) -> Result<Vec<String>> {
     let mut copied = Vec::new();
@@ -35,15 +29,26 @@ async fn execute(ctx: &Context) -> Result<()> {
     tokio::fs::create_dir_all(&root)
         .await
         .context("Gagal membuat direktori backup")?;
-    let sources = [
-        ("users", ctx.app.config.database_path.clone()),
-        ("session", ctx.app.config.session_path.clone()),
-        ("orkut", PathBuf::from("database/orkut_notif.json")),
-        (
-            "callback",
-            PathBuf::from("database/callback_transaksi.json"),
-        ),
+    // Cadangkan semua file database di folder database/ agar database baru
+    // otomatis ikut terbawa tanpa perlu didaftarkan manual.
+    let mut paths = vec![
+        ctx.app.config.database_path.clone(),
+        ctx.app.config.session_path.clone(),
     ];
+    if let Ok(mut dir) = tokio::fs::read_dir("database").await {
+        while let Some(entry) = dir.next_entry().await? {
+            let path = entry.path();
+            if path.is_file() {
+                paths.push(path);
+            }
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    let sources = paths
+        .into_iter()
+        .filter(|path| seen.insert(path.clone()))
+        .map(|path| ("db", path))
+        .collect::<Vec<_>>();
     let copied = copy_sources(&root, &sources).await?;
     anyhow::ensure!(
         !copied.is_empty(),

@@ -4,7 +4,6 @@ use whatsapp_rust::prelude::{MessageExt, MessageField};
 crate::plugins::plugin!(
     &["read", "readview", "readviewonce", "rvo"],
     "tools",
-    "Kirim ulang media sekali lihat dari pesan yang dibalas",
     execute,
     owner_only = true
 );
@@ -32,5 +31,6 @@ async fn execute(ctx: &Context) -> Result<()> {
         .client
         .send_message(ctx.m.chat.parse::<whatsapp_rust::Jid>()?, output)
         .await?;
+    crate::bot_lib::core::logger::log_outgoing(&ctx.m.chat, "[Media]");
     Ok(())
 }

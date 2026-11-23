@@ -1,11 +1,6 @@
 use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::{Context as _, Result};
-crate::plugins::plugin!(
-    &["rednote", "xhs", "xiaohongshu"],
-    "downloader",
-    "Unduh RedNote/Xiaohongshu",
-    execute
-);
+crate::plugins::plugin!(&["rednote", "xhs", "xiaohongshu"], "downloader", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     let url = ctx
         .text

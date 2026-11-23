@@ -1,11 +1,6 @@
 use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::{Context as _, Result};
-crate::plugins::plugin!(
-    &["resi", "cekresi", "track"],
-    "internet",
-    "Lacak resi pengiriman",
-    execute
-);
+crate::plugins::plugin!(&["resi", "cekresi", "track"], "internet", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     let resi = ctx.arg(0);
     anyhow::ensure!(!resi.is_empty(), "/resi <nomor resi> <kurir>");
@@ -48,6 +43,8 @@ async fn execute(ctx: &Context) -> Result<()> {
             .join("\n")
     };
     anyhow::ensure!(!text.is_empty(), "Resi tidak ditemukan");
+    let label = courier.to_ascii_uppercase();
+    let text = format!("*CEK RESI — {label}*\n`{resi}` · {courier}\n\n{text}");
     ctx.reply(text.chars().take(12000).collect::<String>())
         .await
 }

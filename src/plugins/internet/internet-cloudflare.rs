@@ -1,4 +1,7 @@
-use crate::{bot_lib::downloader, database::JsonDatabase, plugins::Context};
+use crate::{
+    bot_lib::{downloader, json_db::JsonDatabase},
+    plugins::Context,
+};
 use anyhow::{Context as _, Result};
 use serde_json::{json, Value};
 use std::sync::{Arc, OnceLock};
@@ -6,7 +9,6 @@ use tokio::sync::OnceCell;
 crate::plugins::plugin!(
     &["cf", "cloudflare"],
     "internet",
-    "Cloudflare DNS dan akses bersama kedaluwarsa",
     execute,
     owner_only = true
 );
@@ -16,6 +18,48 @@ struct State {
     shares: std::collections::HashMap<String, Value>,
 }
 static DB: OnceLock<OnceCell<Arc<JsonDatabase<State>>>> = OnceLock::new();
+
+fn zones_text(zones: &Value) -> String {
+    let mut out = String::from("*DAFTAR ZONE*\n");
+    match zones.as_array() {
+        Some(items) if !items.is_empty() => {
+            for (index, zone) in items.iter().enumerate() {
+                out.push_str(&format!(
+                    "{}. {} — `{}`\n",
+                    index + 1,
+                    zone["name"].as_str().unwrap_or("-"),
+                    zone["id"].as_str().unwrap_or("-")
+                ));
+            }
+        }
+        _ => out.push_str("Tidak ada zone.\n"),
+    }
+    out
+}
+
+fn records_text(records: &Value) -> String {
+    let mut out = String::from("*DNS RECORD*\n");
+    match records.as_array() {
+        Some(items) if !items.is_empty() => {
+            for record in items {
+                out.push_str(&format!(
+                    "• *{}* · {} → {} · proxy: {}\n",
+                    record["name"].as_str().unwrap_or("-"),
+                    record["type"].as_str().unwrap_or("-"),
+                    record["content"].as_str().unwrap_or("-"),
+                    if record["proxied"].as_bool() == Some(true) {
+                        "on"
+                    } else {
+                        "off"
+                    }
+                ));
+            }
+        }
+        _ => out.push_str("Tidak ada record.\n"),
+    }
+    out
+}
+
 async fn api(
     ctx: &Context,
     user: &Value,
@@ -106,8 +150,10 @@ async fn execute(ctx: &Context) -> Result<()> {
                 Ok(())
             })
             .await?;
-            ctx.reply(format!("✅ Share aktif sampai timestamp {expires}"))
-                .await
+            let until = chrono::DateTime::from_timestamp(expires, 0)
+                .map(|d| d.format("%d %b %Y %H:%M UTC").to_string())
+                .unwrap_or_else(|| expires.to_string());
+            ctx.reply(format!("✅ Share aktif sampai *{until}*")).await
         }
         "addshare" => {
             let ticket = snapshot
@@ -158,7 +204,7 @@ async fn execute(ctx: &Context) -> Result<()> {
             }
             if ctx.arg(0) == "setzone" {
                 if ctx.arg(1).is_empty() {
-                    return ctx.json(&user["zones"]).await;
+                    return ctx.reply(zones_text(&user["zones"])).await;
                 }
                 let index = ctx
                     .arg(1)
@@ -238,7 +284,11 @@ async fn execute(ctx: &Context) -> Result<()> {
                     api(ctx,&user,reqwest::Method::POST,&path,Some(json!({"type":typ.to_uppercase(),"name":name,"content":target,"proxied":proxy=="on"}))).await?
                 }
             };
-            ctx.json(&result).await
+            if ctx.arg(0) == "listdns" {
+                ctx.reply(records_text(&result)).await
+            } else {
+                ctx.json(&result).await
+            }
         }
         _ => {
             ctx.reply("/cf addkey|sharecf|addshare|setzone|listdns|adddns|randomdns|deldns")

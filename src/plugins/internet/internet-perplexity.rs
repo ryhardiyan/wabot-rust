@@ -1,12 +1,7 @@
 use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::Result;
 use serde_json::{json, Value};
-crate::plugins::plugin!(
-    &["perplexity", "pplx"],
-    "internet",
-    "Tanya Perplexity SSE",
-    execute
-);
+crate::plugins::plugin!(&["perplexity", "pplx"], "internet", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     anyhow::ensure!(!ctx.text.is_empty(), "/perplexity <pertanyaan>");
     let response=ctx.app.http.post("https://www.perplexity.ai/rest/sse/perplexity_ask").header("origin","https://www.perplexity.ai").header("referer","https://www.perplexity.ai/")
@@ -34,5 +29,5 @@ async fn execute(ctx: &Context) -> Result<()> {
         !answer.is_empty(),
         "Perplexity tidak mengembalikan jawaban SSE; endpoint membutuhkan sesi valid"
     );
-    ctx.reply(answer).await
+    ctx.reply(format!("*PERPLEXITY*\n\n{answer}")).await
 }

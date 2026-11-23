@@ -2,12 +2,7 @@ use crate::{
     bot_lib::{downloader, sticker},
     plugins::Context,
 };
-crate::plugins::plugin!(
-    &["brat"],
-    "maker",
-    "Buat stiker teks Brat/anime/video/GIF",
-    execute
-);
+crate::plugins::plugin!(&["brat"], "maker", execute);
 async fn execute(ctx: &Context) -> anyhow::Result<()> {
     let text = if ctx.text.is_empty() {
         ctx.m.quoted.as_ref().map(|q| q.text.as_str()).unwrap_or("")

@@ -12,8 +12,6 @@ mod internet_perplexity;
 mod internet_threecheck;
 #[path = "internet-trackpaket.rs"]
 mod internet_trackpaket;
-#[path = "internet-translate.rs"]
-mod internet_translate;
 
 pub(super) fn register(plugins: &mut Registry) {
     plugins.extend([
@@ -23,6 +21,5 @@ pub(super) fn register(plugins: &mut Registry) {
         Box::new(internet_perplexity::Command),
         Box::new(internet_threecheck::Command),
         Box::new(internet_trackpaket::Command),
-        Box::new(internet_translate::Command),
     ]);
 }

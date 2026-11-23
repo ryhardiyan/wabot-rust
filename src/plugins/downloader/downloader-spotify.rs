@@ -1,4 +1,4 @@
-crate::plugins::plugin!(&["spotify"], "downloader", "Unduh audio Spotify", execute);
+crate::plugins::plugin!(&["spotify"], "downloader", execute);
 async fn execute(ctx: &crate::plugins::Context) -> anyhow::Result<()> {
     super::platform(ctx, "sp").await
 }

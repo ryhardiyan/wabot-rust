@@ -3,7 +3,6 @@ use anyhow::{Context as _, Result};
 crate::plugins::plugin!(
     &["ttstalk", "tiktokstalk", "ttstalker", "stalktt"],
     "stalk",
-    "Profil publik TikTok",
     execute
 );
 pub(super) async fn lookup(ctx: &Context, username: &str) -> Result<()> {
@@ -47,7 +46,36 @@ pub(super) async fn lookup(ctx: &Context, username: &str) -> Result<()> {
         .or_else(|| value.pointer("/DEFAULT_SCOPE/webapp.user-detail/userInfo"))
         .or_else(|| value.get("UserModule"))
         .context("TikTok user tidak ditemukan")?;
-    ctx.json(user).await
+    let detail = user.get("user").unwrap_or(user);
+    let stats = &user["stats"];
+    let str_val = |key: &str| detail[key].as_str().unwrap_or("-");
+    let num = |key: &str| stats[key].as_u64().unwrap_or(0);
+    let text = format!(
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\
+         *PROFIL TIKTOK*\n\
+         ━━━━━━━━━━━━━━━━━━━━━━━━\n\
+         👤 Username : *@{}*\n\
+         📛 Nama     : {}\n\
+         ✅ Terverifikasi: {}\n\
+         📝 Bio      : {}\n\
+         ❤️ Followers : *{}*\n\
+         ➡️ Following : *{}*\n\
+         💚 Likes    : *{}*\n\
+         🎬 Video    : *{}*",
+        str_val("uniqueId"),
+        str_val("nickname"),
+        if detail["verified"].as_bool() == Some(true) {
+            "Ya"
+        } else {
+            "Tidak"
+        },
+        str_val("signature"),
+        num("followerCount"),
+        num("followingCount"),
+        num("heartCount"),
+        num("videoCount")
+    );
+    ctx.reply(text).await
 }
 async fn execute(ctx: &Context) -> Result<()> {
     lookup(ctx, &ctx.text).await

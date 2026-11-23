@@ -2,12 +2,7 @@ use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::{Context as _, Result};
 use std::time::{Duration, Instant};
 
-crate::plugins::plugin!(
-    &["fetch", "get"],
-    "tools",
-    "HTTP client dengan method, body, header, timeout",
-    execute
-);
+crate::plugins::plugin!(&["fetch", "get"], "tools", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     if ctx.text.is_empty() {
         return ctx.reply("/fetch <url> [--method=POST] [--json={...}] [--header=Key:Value] [--headers] [--no-redirect] [--timeout=30000]").await;
@@ -92,7 +87,12 @@ async fn execute(ctx: &Context) -> Result<()> {
         .unwrap_or("application/octet-stream")
         .to_string();
     let header_text = if show_headers {
-        format!("{:#?}", response.headers())
+        response
+            .headers()
+            .iter()
+            .map(|(key, value)| format!("{key}: {}", value.to_str().unwrap_or("<binary>")))
+            .collect::<Vec<_>>()
+            .join("\n")
     } else {
         String::new()
     };
@@ -104,6 +104,16 @@ async fn execute(ctx: &Context) -> Result<()> {
         start.elapsed().as_millis(),
         mime
     );
+    if mime.contains("json") {
+        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) {
+            let text = format!(
+                "*FETCH {status} · {} ms · {mime}*\n\n{}",
+                start.elapsed().as_millis(),
+                crate::plugins::json_text(&value)
+            );
+            return ctx.reply(text).await;
+        }
+    }
     ctx.m
         .send_media(data, &mime, "fetch_result.bin", &caption)
         .await?;

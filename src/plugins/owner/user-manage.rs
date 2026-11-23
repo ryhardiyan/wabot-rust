@@ -3,7 +3,6 @@ use anyhow::{Context as _, Result};
 crate::plugins::plugin!(
     &["userlist", "listuser", "unreguser", "accuser"],
     "owner",
-    "Kelola registrasi pengguna",
     execute,
     owner_only = true
 );

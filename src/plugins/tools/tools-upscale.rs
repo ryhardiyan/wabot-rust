@@ -3,12 +3,7 @@ use anyhow::{bail, Context as _, Result};
 use reqwest::multipart::{Form, Part};
 use serde_json::json;
 use std::time::Duration;
-crate::plugins::plugin!(
-    &["upscale", "hd", "remini", "enhancer"],
-    "tools",
-    "Upscale gambar 2x/4x dengan fallback engine",
-    execute
-);
+crate::plugins::plugin!(&["upscale", "hd", "remini", "enhancer"], "tools", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     let bytes = ctx.m.download(ctx.app.config.max_media_bytes).await?;
     let scale = if ctx.arg(0) == "4" { 4 } else { 2 };

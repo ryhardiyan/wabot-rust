@@ -2,7 +2,6 @@ use crate::{bot_lib::downloader, plugins::Context};
 crate::plugins::plugin!(
     &["carbon", "carbonara", "codeimg", "toviewcode"],
     "internet",
-    "Render kode menjadi gambar Carbon",
     execute
 );
 async fn execute(ctx: &Context) -> anyhow::Result<()> {
@@ -25,7 +24,8 @@ async fn execute(ctx: &Context) -> anyhow::Result<()> {
         .send()
         .await?;
     let data = downloader::bounded(response, ctx.app.config.max_media_bytes).await?;
+    let caption = format!("*{}* · Carbon", ctx.app.config.brand());
     ctx.m
-        .send_media(data, "image/png", "carbon.png", "Carbon")
+        .send_media(data, "image/png", "carbon.png", &caption)
         .await
 }

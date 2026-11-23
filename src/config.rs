@@ -16,12 +16,19 @@ pub struct Config {
     pub self_mode: bool,
     pub session_path: PathBuf,
     pub database_path: PathBuf,
+    /// JID owner yang berhak menyetujui verifikasi (OWNER_JID).
+    pub owner_jid: String,
+    /// Nomor owner yang harus tertulis di vCard (OWNER_PHONE).
+    pub owner_phone: String,
+    /// Kata wajib pada field FN vCard (REQUIRED_NAME).
+    pub required_name: String,
+    /// File SQLite untuk tabel users verifikasi (VERIFY_DB).
+    pub verify_db_path: PathBuf,
+    /// File SQLite untuk statistik pemakaian plugin (PLUGIN_DB).
+    pub plugin_db_path: PathBuf,
     pub max_media_bytes: usize,
     pub max_concurrent: usize,
     pub rate_limit: u32,
-    pub webhook_addr: String,
-    pub webhook_token: Option<String>,
-    pub notification_group: Option<String>,
     pub env: HashMap<String, String>,
 }
 
@@ -42,6 +49,11 @@ pub fn clean_number(value: &str) -> String {
 }
 
 impl Config {
+    /// Nama brand tanpa simbol © bawaan `.env`, siap dipakai di header/caption.
+    pub fn brand(&self) -> &str {
+        self.watermark.trim().trim_start_matches('©').trim()
+    }
+
     pub fn load() -> Result<Self> {
         let mut env = std::env::vars().collect::<HashMap<String, String>>();
         match std::fs::read_to_string(".env") {
@@ -99,13 +111,33 @@ impl Config {
             pairing_number.is_empty() || (8..=15).contains(&pairing_number.len()),
             "PAIRING_NUMBER harus nomor internasional 8–15 digit"
         );
-        let webhook_addr = get(
-            "WEBHOOK_ADDR",
-            &format!("127.0.0.1:{}", get("SERVER_PORT", "6104")),
+        let owner_numbers: Vec<String> = get("OWNER_NUMBER", "")
+            .split(',')
+            .map(str::trim)
+            .map(clean_number)
+            .filter(|s| !s.is_empty())
+            .collect();
+        let fallback_owner = owner_numbers.first().cloned().unwrap_or_default();
+        let owner_phone = clean_number(&get("OWNER_PHONE", &fallback_owner));
+        anyhow::ensure!(
+            owner_phone.is_empty() || (8..=15).contains(&owner_phone.len()),
+            "OWNER_PHONE harus nomor internasional 8–15 digit"
         );
-        webhook_addr
-            .parse::<std::net::SocketAddr>()
-            .context("WEBHOOK_ADDR harus IP:port")?;
+        let raw_owner_jid = get("OWNER_JID", "");
+        let owner_jid = if raw_owner_jid.is_empty() {
+            if owner_phone.is_empty() {
+                String::new()
+            } else {
+                format!("{owner_phone}@s.whatsapp.net")
+            }
+        } else if raw_owner_jid.contains('@') {
+            raw_owner_jid
+        } else {
+            format!("{}@s.whatsapp.net", clean_number(&raw_owner_jid))
+        };
+        let required_name = get("REQUIRED_NAME", "Rahardiyan");
+        let verify_db_path = PathBuf::from(get("VERIFY_DB", "database/users.db"));
+        let plugin_db_path = PathBuf::from(get("PLUGIN_DB", "database/plugins.db"));
         Ok(Self {
             owners: owners
                 .iter()
@@ -124,16 +156,15 @@ impl Config {
                 .cloned(),
             self_mode: get("SELF", "false").eq_ignore_ascii_case("true"),
             session_path,
-            database_path: PathBuf::from(get("USER_DB", "src/database/users.json")),
+            database_path: PathBuf::from(get("USER_DB", "database/users.json")),
+            owner_jid,
+            owner_phone,
+            required_name,
+            verify_db_path,
+            plugin_db_path,
             max_media_bytes,
             max_concurrent,
             rate_limit,
-            webhook_addr,
-            webhook_token: env.get("WEBHOOK_TOKEN").filter(|s| !s.is_empty()).cloned(),
-            notification_group: env
-                .get("NOTIFICATION_GROUP")
-                .filter(|s| !s.is_empty())
-                .cloned(),
             env,
         })
     }

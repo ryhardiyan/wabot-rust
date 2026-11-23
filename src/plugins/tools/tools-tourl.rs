@@ -3,12 +3,7 @@ use crate::{
     plugins::Context,
 };
 use anyhow::Result;
-crate::plugins::plugin!(
-    &["tourl", "url", "upload"],
-    "tools",
-    "Upload media ke CDN",
-    execute
-);
+crate::plugins::plugin!(&["tourl", "url", "upload"], "tools", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     let mime = message::mime(ctx.m.media());
     anyhow::ensure!(!mime.is_empty(), "Kirim atau balas media untuk upload");

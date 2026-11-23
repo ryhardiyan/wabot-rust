@@ -2,13 +2,7 @@ use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::{Context as _, Result};
 use reqwest::multipart::{Form, Part};
 use serde_json::{json, Value};
-crate::plugins::plugin!(
-    &["wink"],
-    "tools",
-    "Wink Meitu video enhancer",
-    execute,
-    owner_only = true
-);
+crate::plugins::plugin!(&["wink"], "tools", execute, owner_only = true);
 fn string(v: &Value) -> String {
     v.as_str()
         .map(String::from)

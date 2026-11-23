@@ -2,7 +2,6 @@ use crate::{bot_lib::downloader, plugins::Context};
 crate::plugins::plugin!(
     &["tricheck", "cektri", "tri", "tricek"],
     "internet",
-    "Cek status kartu Tri",
     execute
 );
 async fn execute(ctx: &Context) -> anyhow::Result<()> {

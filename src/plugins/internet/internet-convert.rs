@@ -5,7 +5,6 @@ use serde_json::{json, Value};
 crate::plugins::plugin!(
     &["convert", "yamlgen", "clashgen"],
     "internet",
-    "Konversi akun VMess/VLESS/Trojan ke konfigurasi Clash",
     execute,
     owner_only = true
 );

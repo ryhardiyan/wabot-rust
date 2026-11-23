@@ -70,10 +70,14 @@ impl MessageContext {
                 .send_media(text.into_bytes(), "text/plain", "reply.txt", "Output teks")
                 .await;
         }
+        super::logger::log_outgoing(&self.chat, &text);
         self.inbound.reply_quoting(text).await?;
         Ok(())
     }
     pub async fn react(&self, emoji: &str) -> Result<()> {
+        if !emoji.is_empty() {
+            super::logger::log_outgoing(&self.chat, "[Reaction]");
+        }
         self.inbound.react(emoji).await?;
         Ok(())
     }

@@ -2,12 +2,7 @@ use crate::{
     bot_lib::{core::message, sticker},
     plugins::Context,
 };
-crate::plugins::plugin!(
-    &["s", "stiker", "sticker"],
-    "maker",
-    "Konversi gambar/video ke WebP dengan metadata pack",
-    execute
-);
+crate::plugins::plugin!(&["s", "stiker", "sticker"], "maker", execute);
 async fn execute(ctx: &Context) -> anyhow::Result<()> {
     let mime = message::mime(ctx.m.media());
     let bytes = ctx.m.download(ctx.app.config.max_media_bytes).await?;

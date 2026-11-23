@@ -7,7 +7,6 @@ use reqwest::multipart::{Form, Part};
 crate::plugins::plugin!(
     &["whatmusic", "findsong", "judul", "judullagu", "cek-lagu"],
     "tools",
-    "Identifikasi musik Doreso dengan fallback ACRCloud",
     execute
 );
 async fn execute(ctx: &Context) -> Result<()> {
@@ -28,11 +27,51 @@ async fn execute(ctx: &Context) -> Result<()> {
     )
     .await?;
     match tokio::time::timeout(std::time::Duration::from_secs(90), doreso(ctx, &bytes)).await {
-        Ok(Ok(music)) => return ctx.json(&music).await,
+        Ok(Ok(music)) => return send_song(ctx, &music).await,
         _ => tracing::debug!("Doreso gagal/timeout; mencoba ACRCloud jika dikonfigurasi"),
     }
     let music = acrcloud(ctx, bytes).await?;
-    ctx.json(&music).await
+    send_song(ctx, &music).await
+}
+
+fn song_text(v: &serde_json::Value) -> Option<String> {
+    let pick = |keys: &[&str]| -> String {
+        for key in keys {
+            let value = &v[*key];
+            if let Some(s) = value.as_str() {
+                if !s.is_empty() && s != "-" {
+                    return s.into();
+                }
+            }
+        }
+        "-".into()
+    };
+    let title = pick(&["title", "song", "name"]);
+    if title == "-" {
+        return None;
+    }
+    let artist = pick(&["artist", "artists", "singer", "author"]);
+    let album = pick(&["album", "album_name"]);
+    let duration = v["duration_ms"]
+        .as_u64()
+        .or_else(|| v["duration"].as_u64())
+        .unwrap_or(0)
+        / 1000;
+    Some(format!(
+        "🎵 *LAGU TERDETEKSI*\n\n*{}*\n👤 Artis : {}\n💿 Album : {}\n⏱️ Durasi: {}:{:02}",
+        title,
+        artist,
+        album,
+        duration / 60,
+        duration % 60
+    ))
+}
+
+async fn send_song(ctx: &Context, v: &serde_json::Value) -> Result<()> {
+    match song_text(v) {
+        Some(text) => ctx.reply(text).await,
+        None => ctx.json(v).await,
+    }
 }
 async fn doreso(ctx: &Context, bytes: &[u8]) -> Result<serde_json::Value> {
     let form = Form::new().part(

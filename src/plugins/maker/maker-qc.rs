@@ -1,11 +1,6 @@
 //! Quote Chat adaptation. Original developer: DyySilence, copyright 2026.
 use crate::{bot_lib::sticker, plugins::Context};
-crate::plugins::plugin!(
-    &["qc"],
-    "maker",
-    "Render quote chat menjadi stiker lokal",
-    execute
-);
+crate::plugins::plugin!(&["qc"], "maker", execute);
 async fn execute(ctx: &Context) -> anyhow::Result<()> {
     let text = format!(
         "{} {}",

@@ -73,27 +73,10 @@ pub async fn run(app: Arc<App>) -> Result<()> {
         builder = builder.with_pair_code(pairing);
     }
     let bot = builder.build().await?;
-    let client = bot.client();
     let mut handle = bot.spawn();
-    let webhook = if app.config.webhook_token.is_some() {
-        let app = app.clone();
-        Some(tokio::spawn(async move {
-            if let Err(error) =
-                super::orderkuota::serve(app, super::socket::WaSocket { client }).await
-            {
-                tracing::error!(%error,"Server webhook berhenti");
-            }
-        }))
-    } else {
-        None
-    };
     tokio::select! {
         _ = &mut handle => { tracing::info!(logged_out = auth.logged_out(), "Runtime WhatsApp selesai"); }
         _ = shutdown() => { tracing::info!("Menghentikan bot dan menyimpan sesi"); handle.shutdown().await; }
-    }
-    if let Some(task) = webhook {
-        task.abort();
-        let _ = task.await;
     }
     let mut tasks = tasks.lock().await;
     tasks.abort_all();

@@ -5,7 +5,6 @@ use tokio::{io::AsyncReadExt, process::Command as ProcessCommand};
 crate::plugins::plugin!(
     &["exec"],
     "owner",
-    "Shell owner dengan timeout dan output terbatas",
     execute,
     owner_only = true,
     custom_prefix = Some("$ ")

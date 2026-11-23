@@ -14,6 +14,7 @@ use crate::{
         user_db::UserDatabase,
     },
     config::Config,
+    verify::db::VerifyDb,
 };
 use anyhow::Result;
 use async_trait::async_trait;
@@ -23,11 +24,13 @@ pub struct App {
     pub config: Arc<Config>,
     pub http: reqwest::Client,
     pub db: Arc<UserDatabase>,
+    pub verify: Arc<VerifyDb>,
     pub store: Store,
     pub registry: Registry,
     pub started: Instant,
     pub permits: Arc<tokio::sync::Semaphore>,
     pub rate: crate::bot_lib::core::rate_limit::RateLimiter,
+    pub stats: Arc<crate::bot_stats::Stats>,
 }
 pub struct Context {
     pub app: Arc<App>,
@@ -46,21 +49,15 @@ impl Context {
     pub fn arg(&self, index: usize) -> &str {
         self.args.get(index).map(String::as_str).unwrap_or("")
     }
+    /// Kirim data hasil olahan API sebagai teks yang mudah dibaca, bukan dump JSON mentah.
     pub async fn json(&self, value: &serde_json::Value) -> Result<()> {
-        let mut value = value.clone();
-        redact(&mut value);
-        let text = serde_json::to_string_pretty(&value)?;
+        let text = json_text(value);
         if text.len() > 8000 {
             self.m
-                .send_media(
-                    text.into_bytes(),
-                    "application/json",
-                    "result.json",
-                    "Hasil JSON",
-                )
+                .send_media(text.into_bytes(), "text/plain", "hasil.txt", "Hasil")
                 .await
         } else {
-            self.reply(format!("```\n{text}\n```")).await
+            self.reply(text).await
         }
     }
     pub async fn media_url(&self, url: &str, mime: &str, caption: &str) -> Result<()> {
@@ -125,6 +122,69 @@ fn redact(value: &mut serde_json::Value) {
     }
 }
 
+pub(crate) fn json_text(value: &serde_json::Value) -> String {
+    let mut value = value.clone();
+    redact(&mut value);
+    let mut body = String::new();
+    render(&value, 0, &mut body);
+    format!("*HASIL*\n\n{body}")
+}
+
+fn leaf_text(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Null => "—".into(),
+        serde_json::Value::Bool(v) => v.to_string(),
+        serde_json::Value::Number(v) => v.to_string(),
+        serde_json::Value::String(v) => v.clone(),
+        _ => String::new(),
+    }
+}
+
+fn is_leaf(value: &serde_json::Value) -> bool {
+    !value.is_object() && !value.is_array()
+}
+
+/// Render JSON sebagai baris ringkas: kunci ditebalkan, array skalar digabung, objek bersarang di-indent.
+fn render(value: &serde_json::Value, indent: usize, out: &mut String) {
+    let pad = "  ".repeat(indent);
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, item) in map {
+                if is_leaf(item) {
+                    out.push_str(&format!("{pad}*{key}* : {}\n", leaf_text(item)));
+                } else if item
+                    .as_array()
+                    .is_some_and(|items| items.iter().all(is_leaf))
+                {
+                    let list = item
+                        .as_array()
+                        .expect("array sudah diverifikasi")
+                        .iter()
+                        .map(leaf_text)
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let list = if list.is_empty() { "—" } else { &list };
+                    out.push_str(&format!("{pad}*{key}* : {list}\n"));
+                } else {
+                    out.push_str(&format!("{pad}*{key}*:\n"));
+                    render(item, indent + 1, out);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                if is_leaf(item) {
+                    out.push_str(&format!("{pad}• {}\n", leaf_text(item)));
+                } else {
+                    out.push_str(&format!("{pad}• [{}]\n", index + 1));
+                    render(item, indent + 1, out);
+                }
+            }
+        }
+        leaf => out.push_str(&format!("{pad}{}\n", leaf_text(leaf))),
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct PluginMetadata {
     pub commands: &'static [&'static str],
@@ -134,18 +194,12 @@ pub struct PluginMetadata {
     pub admin_only: bool,
     pub bot_admin: bool,
     pub custom_prefix: Option<&'static str>,
-    pub description: &'static str,
 }
 impl PluginMetadata {
-    pub const fn new(
-        commands: &'static [&'static str],
-        category: &'static str,
-        description: &'static str,
-    ) -> Self {
+    pub const fn new(commands: &'static [&'static str], category: &'static str) -> Self {
         Self {
             commands,
             category,
-            description,
             owner_only: false,
             group_only: false,
             admin_only: false,
@@ -163,12 +217,12 @@ pub type Registry = Vec<Box<dyn Plugin>>;
 
 /// Implementasi per file dengan metadata statis dan dispatch async bertipe.
 macro_rules! plugin {
-    ($commands:expr, $category:expr, $description:expr, $execute:path $(, $field:ident = $value:expr)* $(,)?) => {
+    ($commands:expr, $category:expr, $execute:path $(, $field:ident = $value:expr)* $(,)?) => {
         pub(super) struct Command;
         #[async_trait::async_trait]
         impl crate::plugins::Plugin for Command {
             fn metadata(&self) -> crate::plugins::PluginMetadata {
-                let base = crate::plugins::PluginMetadata::new($commands, $category, $description);
+                let base = crate::plugins::PluginMetadata::new($commands, $category);
                 crate::plugins::PluginMetadata { $($field: $value,)* ..base }
             }
             async fn execute(&self, ctx: &crate::plugins::Context) -> anyhow::Result<()> { $execute(ctx).await }
@@ -177,12 +231,8 @@ macro_rules! plugin {
 }
 pub(crate) use plugin;
 
-pub async fn handle_contact(
-    app: &Arc<App>,
-    m: &MessageContext,
-    user: &serde_json::Value,
-) -> Result<bool> {
-    user::user_register::handle_contact(app, m, user).await
+pub async fn handle_contact(app: &Arc<App>, m: &MessageContext) -> Result<bool> {
+    crate::verify::handle_contact(app, m).await
 }
 
 pub fn registry() -> Registry {
@@ -216,7 +266,7 @@ mod tests {
     #[test]
     fn registry_has_all_enabled_plugins_and_unique_commands() {
         let plugins = super::registry();
-        assert_eq!(plugins.len(), 49);
+        assert_eq!(plugins.len(), 48);
         let mut seen = std::collections::HashSet::new();
         for plugin in plugins {
             let meta = plugin.metadata();
@@ -230,10 +280,12 @@ mod tests {
     fn sensitive_commands_require_owner() {
         let registry = super::registry();
         for name in [
+            "stats",
             "exec",
             "eval",
             "file",
             "backup",
+            "acc",
             "accuser",
             "unreguser",
             "cf",

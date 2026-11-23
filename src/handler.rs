@@ -1,5 +1,6 @@
 use crate::{
     bot_lib::core::smsg::MessageContext,
+    bot_stats::Outcome,
     config::clean_number,
     plugins::{App, Context, PluginMetadata},
 };
@@ -36,6 +37,11 @@ pub fn permission(
 
 pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) -> Result<()> {
     let m = MessageContext::new(inbound);
+    // Log pesan masuk lebih dulu (termasuk status), sebelum filter apapun.
+    // Pesan dari bot sendiri dicatat di jalur kirim (reply/send_media).
+    if !m.from_me {
+        crate::bot_lib::core::logger::log_message(&m);
+    }
     if m.from_me || m.chat == "status@broadcast" {
         return Ok(());
     }
@@ -50,33 +56,31 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
             .insert(m.sender.clone(), m.push_name.clone())
             .await;
     }
-    let phone = std::iter::once(m.sender.as_str())
-        .chain(m.sender_alt.as_deref())
-        .find(|s| s.ends_with("@s.whatsapp.net"))
-        .map(clean_number);
+    let phone = crate::verify::sender_phone(&m);
     let is_owner = phone
         .as_ref()
-        .is_some_and(|n| app.config.owners.contains(n));
+        .is_some_and(|n| app.config.owners.contains(n) || *n == app.config.owner_phone);
     if app.config.self_mode && !is_owner {
         return Ok(());
     }
-    let user = app
-        .db
+    app.db
         .update(|d| d.touch(&m.sender, m.sender_alt.as_deref(), &m.push_name, is_owner))
         .await?;
     match tokio::time::timeout(
         std::time::Duration::from_secs(120),
-        crate::plugins::handle_contact(&app, &m, &user),
+        crate::plugins::handle_contact(&app, &m),
     )
     .await
     {
         Ok(Ok(true)) => return Ok(()),
         Ok(Ok(false)) => (),
         Ok(Err(error)) => {
-            tracing::warn!(%error,"Registrasi kontak gagal");
-            return m.reply("Registrasi kontak gagal. Periksa konfigurasi Google Contacts dan mapping nomor pengirim.").await;
+            tracing::warn!(%error, "Verifikasi kontak gagal");
+            return m
+                .reply("⚠️ Verifikasi kontak gagal. Silakan coba kirim ulang kartu kontaknya.")
+                .await;
         }
-        Err(_) => return m.reply("Verifikasi Google Contacts timeout.").await,
+        Err(_) => return m.reply("⏳ Verifikasi kontak timeout.").await,
     }
     let normal = parse_command(&m.text);
     let selected = app.registry.iter().find_map(|p| {
@@ -102,6 +106,15 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
     let Some((plugin, command, text)) = selected else {
         return Ok(());
     };
+    // Middleware verifikasi: berlaku untuk setiap command sebelum efek samping plugin.
+    // Perintah register dan .acc sengaja dikecualikan agar user bisa meminta petunjuk
+    // dan owner bisa menyetujui pendaftar.
+    const PUBLIC_COMMANDS: [&str; 5] = ["register", "reg", "daftar", "cekreg", "acc"];
+    if !PUBLIC_COMMANDS.contains(&command.as_str()) {
+        if let Some(reason) = crate::verify::access_reason(&app, phone.as_deref(), is_owner).await {
+            return m.reply(reason).await;
+        }
+    }
     if !is_owner {
         use crate::bot_lib::core::rate_limit::Decision;
         match app.rate.check(&m.sender).await {
@@ -123,14 +136,6 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
         }
     }
     let meta = plugin.metadata();
-    if user["registered"] != true
-        && !is_owner
-        && !["register", "reg", "daftar", "cekreg"].contains(&command.as_str())
-    {
-        return m
-            .reply("Nomor Anda belum terdaftar. Ketik /register untuk petunjuk registrasi.")
-            .await;
-    }
     // Periksa owner/group sebelum permintaan metadata apa pun.
     if let Some(error) = permission(
         PluginMetadata {
@@ -184,17 +189,38 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
         is_bot_admin,
     };
     let _ = ctx.m.react("⏳").await;
+    let started = std::time::Instant::now();
     let result =
         tokio::time::timeout(std::time::Duration::from_secs(660), plugin.execute(&ctx)).await;
+    let elapsed = started.elapsed();
     let _ = ctx.m.react("").await;
     match result {
-        Ok(Ok(())) => (),
+        Ok(Ok(())) => {
+            app.stats
+                .record(&ctx.command, Outcome::Ok, elapsed, None)
+                .await
+        }
         Ok(Err(error)) => {
+            let message = error.to_string();
+            crate::bot_lib::core::logger::log_anyhow_from(&ctx.m, &ctx.command, &error);
+            app.stats
+                .record(&ctx.command, Outcome::Fail, elapsed, Some(&message))
+                .await;
             tracing::warn!(command = %ctx.command, error = %error, "Plugin gagal");
             ctx.reply("⚠️ Proses gagal. Periksa input, konfigurasi layanan, atau log bot.")
                 .await?;
         }
-        Err(_) => ctx.reply("Batas waktu pemrosesan tercapai.").await?,
+        Err(_) => {
+            crate::bot_lib::core::logger::log_from(
+                &ctx.m,
+                &ctx.command,
+                &format!("timeout setelah {} detik", elapsed.as_secs()),
+            );
+            app.stats
+                .record(&ctx.command, Outcome::Timeout, elapsed, None)
+                .await;
+            ctx.reply("Batas waktu pemrosesan tercapai.").await?;
+        }
     }
     Ok(())
 }
@@ -214,7 +240,7 @@ mod tests {
     fn owner_gate_is_enforced() {
         let m = PluginMetadata {
             owner_only: true,
-            ..PluginMetadata::new(&["exec"], "owner", "")
+            ..PluginMetadata::new(&["exec"], "owner")
         };
         assert!(permission(m, false, true, true, true).is_some());
         assert!(permission(m, true, false, false, false).is_none());
@@ -225,7 +251,7 @@ mod tests {
             group_only: true,
             admin_only: true,
             bot_admin: true,
-            ..PluginMetadata::new(&["group"], "group", "")
+            ..PluginMetadata::new(&["group"], "group")
         };
         assert_eq!(
             permission(m, true, false, true, true),

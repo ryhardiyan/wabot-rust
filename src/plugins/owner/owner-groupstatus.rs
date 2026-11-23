@@ -3,7 +3,6 @@ use whatsapp_rust::prelude::{MessageBuilderExt, MessageExt};
 crate::plugins::plugin!(
     &["statusgc", "swgc"],
     "owner",
-    "Kirim status grup dengan context protokol",
     execute,
     owner_only = true,
     group_only = true
@@ -27,5 +26,11 @@ async fn execute(ctx: &Context) -> anyhow::Result<()> {
         .client
         .send_message(ctx.m.chat.parse::<whatsapp_rust::Jid>()?, msg)
         .await?;
+    let logged = if ctx.text.is_empty() {
+        "[Media]".to_string()
+    } else {
+        ctx.text.clone()
+    };
+    crate::bot_lib::core::logger::log_outgoing(&ctx.m.chat, &logged);
     Ok(())
 }

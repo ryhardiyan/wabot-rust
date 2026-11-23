@@ -6,7 +6,6 @@ use anyhow::Result;
 crate::plugins::plugin!(
     &["tourlgh", "tourlgithub"],
     "tools",
-    "Upload media ke repository GitHub",
     execute,
     owner_only = true
 );

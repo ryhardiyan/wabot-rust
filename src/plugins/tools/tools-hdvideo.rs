@@ -2,13 +2,7 @@ use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::{Context as _, Result};
 use reqwest::multipart::Form;
 use serde_json::Value;
-crate::plugins::plugin!(
-    &["hdvid", "hdvideo"],
-    "tools",
-    "UnblurImage video enhancer 2K",
-    execute,
-    owner_only = true
-);
+crate::plugins::plugin!(&["hdvid", "hdvideo"], "tools", execute, owner_only = true);
 async fn post(ctx: &Context, path: &str, fields: &[(&str, String)], id: &str) -> Result<Value> {
     let mut form = Form::new();
     for (k, v) in fields {

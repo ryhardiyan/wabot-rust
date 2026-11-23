@@ -1,11 +1,6 @@
 use crate::plugins::Context;
-crate::plugins::plugin!(
-    &["statsgc"],
-    "group",
-    "Statistik metadata grup",
-    execute,
-    group_only = true
-);
+crate::plugins::plugin!(&["statsgc"], "group", execute, group_only = true);
+
 async fn execute(ctx: &Context) -> anyhow::Result<()> {
     let g = if let Some(g) = ctx.app.store.groups.get(&ctx.m.chat).await {
         g
@@ -24,12 +19,19 @@ async fn execute(ctx: &Context) -> anyhow::Result<()> {
             .await;
         g
     };
-    ctx.reply(format!(
-        "*{}*\nAnggota: {}\nAdmin: {}\nID: {}",
+    let admins = g.participants.iter().filter(|p| p.is_admin()).count();
+    let text = format!(
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n\
+         *{}*\n\
+         ━━━━━━━━━━━━━━━━━━━━━━━━\n\
+         👥 Anggota : *{}*\n\
+         🛡️ Admin   : *{}*\n\
+         🆔 ID      : `{}`\n\
+         ━━━━━━━━━━━━━━━━━━━━━━━━",
         g.subject,
         g.participants.len(),
-        g.participants.iter().filter(|p| p.is_admin()).count(),
+        admins,
         g.id
-    ))
-    .await
+    );
+    ctx.reply(text).await
 }

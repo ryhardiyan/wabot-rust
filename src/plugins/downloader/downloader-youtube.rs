@@ -1,12 +1,7 @@
 use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::{Context as _, Result};
 use serde_json::Value;
-crate::plugins::plugin!(
-    &["ytmp4", "ytmp3"],
-    "downloader",
-    "YouTube audio/video dengan polling YTDown",
-    execute
-);
+crate::plugins::plugin!(&["ytmp4", "ytmp3"], "downloader", execute);
 async fn proxy(ctx: &Context, url: &str) -> Result<Value> {
     downloader::json(
         ctx.app

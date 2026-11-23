@@ -1,12 +1,7 @@
 use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::Result;
 use serde_json::json;
-crate::plugins::plugin!(
-    &["pinterest", "pint", "pinsearch"],
-    "downloader",
-    "Pencarian Pinterest",
-    execute
-);
+crate::plugins::plugin!(&["pinterest", "pint", "pinsearch"], "downloader", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     anyhow::ensure!(!ctx.text.is_empty(), "/pinterest <kata pencarian>");
     let client = &ctx.app.http;

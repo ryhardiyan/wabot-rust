@@ -12,7 +12,10 @@ pub struct WaSocket {
     pub client: Arc<Client>,
 }
 impl WaSocket {
+    #[allow(dead_code)] // Helper API untuk plugin.
     pub async fn send_text(&self, chat: &str, text: impl Into<String>) -> Result<()> {
+        let text = text.into();
+        super::logger::log_outgoing(chat, &text);
         self.client
             .send_message(chat.parse::<whatsapp_rust::Jid>()?, wa::Message::text(text))
             .await?;
@@ -112,6 +115,19 @@ impl WaSocket {
         self.client
             .send_message(chat.parse::<whatsapp_rust::Jid>()?, msg)
             .await?;
+        let indicator = match kind {
+            "sticker" => "[Sticker]",
+            "image" => "[Image]",
+            "video" => "[Video]",
+            "audio" => "[Audio]",
+            _ => "[Document]",
+        };
+        let content = if caption.trim().is_empty() {
+            indicator.to_string()
+        } else {
+            format!("{indicator} {}", caption.trim())
+        };
+        super::logger::log_outgoing(chat, &content);
         Ok(())
     }
 }

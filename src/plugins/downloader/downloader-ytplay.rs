@@ -1,11 +1,6 @@
 use crate::{bot_lib::downloader, plugins::Context};
 use anyhow::{Context as _, Result};
-crate::plugins::plugin!(
-    &["play", "p"],
-    "downloader",
-    "Cari video atau putar audio YouTube",
-    execute
-);
+crate::plugins::plugin!(&["play", "p"], "downloader", execute);
 async fn execute(ctx: &Context) -> Result<()> {
     let text = if ctx.text.is_empty() {
         ctx.m.quoted.as_ref().map(|q| q.text.as_str()).unwrap_or("")
