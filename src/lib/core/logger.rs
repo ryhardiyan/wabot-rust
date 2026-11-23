@@ -1,10 +1,16 @@
 //! Real-time console logger untuk pesan masuk/keluar dan error fitur.
 //!
-//! Format pesan (dua baris):
+//! Format pesan (dua baris, dipisah satu baris kosong dari entry berikutnya):
 //! ```text
-//! 12.00 - +62 823-2782-9267 - Lu Wu Yi - Private Chat
+//! 12.00 [IN] +62 823-2782-9267 - Lu Wu Yi - Private Chat
 //! Terimakasih admin sayang
+//!
+//! 12.01 [SUCCESS] Fitur: ping | User: +62 823-2782-9267 (Private Chat)
 //! ```
+//!
+//! Warna ANSI dipakai langsung tanpa crate tambahan supaya level mudah
+//! dibedakan: `[IN]` cyan, `[OUT]`/`[SUCCESS]` hijau, `[WARN]` kuning,
+//! `[ERROR]` merah, `[INFO]` biru, `[DEBUG]` abu.
 //!
 //! Semua I/O tulis ke terminal terjadi di satu thread khusus. Pemanggil hanya
 //! melakukan `try_send` ke channel bounded, jadi logging tidak pernah
@@ -16,10 +22,27 @@ use super::smsg::MessageContext;
 use std::{
     io::Write,
     sync::{mpsc, OnceLock},
+    time::Duration,
 };
 use whatsapp_rust::{prelude::MessageExt, waproto::whatsapp as wa};
 
 const QUEUE: usize = 1024;
+
+/// Kode warna ANSI. `RESET` wajib ditutup setiap tag agar tidak mewarnai
+/// baris berikutnya.
+mod ansi {
+    pub const RESET: &str = "\x1b[0m";
+    pub const RED: &str = "\x1b[31m";
+    pub const GREEN: &str = "\x1b[32m";
+    pub const YELLOW: &str = "\x1b[33m";
+    pub const BLUE: &str = "\x1b[34m";
+    pub const CYAN: &str = "\x1b[36m";
+    pub const GRAY: &str = "\x1b[90m";
+}
+
+fn tag(label: &str, color: &str) -> String {
+    format!("{color}{label}{}", ansi::RESET)
+}
 
 struct LogEvent {
     text: String,
@@ -41,7 +64,9 @@ fn sender() -> &'static mpsc::SyncSender<LogEvent> {
                 let stdout = std::io::stdout();
                 for event in rx {
                     let mut out = stdout.lock();
-                    let _ = writeln!(out, "{}", event.text);
+                    // `\n` ekstra = satu baris kosong pemisah, jadi dua entry
+                    // tidak menumpuk walaupun isinya multi-baris.
+                    let _ = writeln!(out, "{}\n", event.text);
                     let _ = out.flush();
                 }
             });
@@ -227,10 +252,18 @@ fn media_indicator(base: &wa::Message) -> Option<&'static str> {
     }
 }
 
-fn message_line(number: &str, name: &str, chat: &str, content: &str) -> String {
+fn message_line(
+    label: &str,
+    color: &str,
+    number: &str,
+    name: &str,
+    chat: &str,
+    content: &str,
+) -> String {
     format!(
-        "{} - {} - {} - {}\n{}",
+        "{} {} - {} - {} - {}\n{}",
         now_wib(),
+        tag(label, color),
         number,
         name,
         chat,
@@ -255,6 +288,8 @@ pub fn log_message(m: &MessageContext) {
             m.push_name.trim()
         };
         let line = message_line(
+            "[IN]",
+            ansi::CYAN,
             &format_sender(&m.sender, m.sender_alt.as_deref(), false),
             name,
             chat_category(&m.chat),
@@ -268,8 +303,48 @@ pub fn log_message(m: &MessageContext) {
 /// media seperti `[Image]`, `[Sticker]`, dst.
 pub fn log_outgoing(chat: &str, content: &str) {
     guard(|| {
-        emit(message_line("Bot", "Bot", chat_category(chat), content));
+        emit(message_line(
+            "[OUT]",
+            ansi::GREEN,
+            "Bot",
+            "Bot",
+            chat_category(chat),
+            content,
+        ));
     });
+}
+
+/// Baris detail untuk level berlabel (`[ERROR]`, `[WARN]`). Dua baris inti,
+/// plus baris `At:` hanya bila lokasi sumber tersedia.
+fn detail_line(
+    label: &str,
+    color: &str,
+    feature: &str,
+    reason: &str,
+    user: Option<&str>,
+    chat: Option<&str>,
+    location: Option<&str>,
+) -> String {
+    let user = user.filter(|s| !s.is_empty()).unwrap_or("-");
+    let chat = chat.filter(|s| !s.is_empty()).unwrap_or("-");
+    let mut line = format!(
+        "{} {} Fitur: {} | User: {} ({})\n{}Reason:{} {}",
+        now_wib(),
+        tag(label, color),
+        feature,
+        user,
+        chat,
+        color,
+        ansi::RESET,
+        reason
+    );
+    if let Some(loc) = location.filter(|s| !s.is_empty()) {
+        line.push('\n');
+        line.push_str(&tag("At:", ansi::GRAY));
+        line.push(' ');
+        line.push_str(loc);
+    }
+    line
 }
 
 fn error_line(
@@ -279,25 +354,30 @@ fn error_line(
     chat: Option<&str>,
     location: Option<&str>,
 ) -> String {
-    const RED: &str = "\x1b[31m";
-    const RESET: &str = "\x1b[0m";
+    detail_line("[ERROR]", ansi::RED, feature, reason, user, chat, location)
+}
+
+fn warn_line(feature: &str, reason: &str, user: Option<&str>, chat: Option<&str>) -> String {
+    detail_line("[WARN]", ansi::YELLOW, feature, reason, user, chat, None)
+}
+
+fn success_line(
+    feature: &str,
+    elapsed: Duration,
+    user: Option<&str>,
+    chat: Option<&str>,
+) -> String {
     let user = user.filter(|s| !s.is_empty()).unwrap_or("-");
     let chat = chat.filter(|s| !s.is_empty()).unwrap_or("-");
-    let mut line = format!(
-        "{} - {}[ERROR]{} Fitur: {} | User: {} ({})\nReason: {}",
+    format!(
+        "{} {} Fitur: {} | User: {} ({}) | Durasi: {} ms",
         now_wib(),
-        RED,
-        RESET,
+        tag("[SUCCESS]", ansi::GREEN),
         feature,
         user,
         chat,
-        reason
-    );
-    if let Some(loc) = location.filter(|s| !s.is_empty()) {
-        line.push_str("\nAt: ");
-        line.push_str(loc);
-    }
-    line
+        elapsed.as_millis()
+    )
 }
 
 /// Fungsi error logger umum, bisa dipanggil dari blok `catch` tiap plugin.
@@ -364,14 +444,60 @@ pub fn log_anyhow_from(m: &MessageContext, feature: &str, error: &anyhow::Error)
     );
 }
 
+/// Peringatan (misalnya timeout) — dibedakan dari error agar tidak panik.
+pub fn log_warn(feature: &str, reason: &str, user: Option<&str>, chat: Option<&str>) {
+    guard(|| {
+        emit(warn_line(feature, reason, user, chat));
+    });
+}
+
+/// Helper warning dengan konteks pesan.
+pub fn log_warn_from(m: &MessageContext, feature: &str, reason: &str) {
+    log_warn(
+        feature,
+        reason,
+        Some(&user_label(m)),
+        Some(chat_category(&m.chat)),
+    );
+}
+
+/// Konfirmasi plugin berhasil, lengkap dengan durasi eksekusi.
+pub fn log_success(feature: &str, elapsed: Duration, user: Option<&str>, chat: Option<&str>) {
+    guard(|| {
+        emit(success_line(feature, elapsed, user, chat));
+    });
+}
+
+/// Helper sukses dengan konteks pesan.
+pub fn log_success_from(m: &MessageContext, feature: &str, elapsed: Duration) {
+    log_success(
+        feature,
+        elapsed,
+        Some(&user_label(m)),
+        Some(chat_category(&m.chat)),
+    );
+}
+
 /// Info ringan untuk keperluan debug console.
 pub fn log_info(scope: &str, message: &str) {
-    emit(format!("{} - [INFO] {scope}: {message}", now_wib()));
+    guard(|| {
+        emit(format!(
+            "{} {} {scope}: {message}",
+            now_wib(),
+            tag("[INFO]", ansi::BLUE)
+        ));
+    });
 }
 
 /// Debug ringan untuk keperluan debug console.
 pub fn log_debug(scope: &str, message: &str) {
-    emit(format!("{} - [DEBUG] {scope}: {message}", now_wib()));
+    guard(|| {
+        emit(format!(
+            "{} {} {scope}: {message}",
+            now_wib(),
+            tag("[DEBUG]", ansi::GRAY)
+        ));
+    });
 }
 
 #[cfg(test)]
@@ -411,5 +537,48 @@ mod tests {
         assert_eq!(media_indicator(msg.get_base_message()), None);
         msg.sticker_message = whatsapp_rust::prelude::MessageField::some(Default::default());
         assert_eq!(media_indicator(msg.get_base_message()), Some("[Sticker]"));
+    }
+
+    #[test]
+    fn levels_have_distinct_colors() {
+        let incoming = message_line("[IN]", ansi::CYAN, "+62 823", "A", "Private Chat", "halo");
+        let outgoing = message_line("[OUT]", ansi::GREEN, "Bot", "Bot", "Private Chat", "halo");
+        let success = success_line(
+            "ping",
+            Duration::from_millis(12),
+            Some("+62 823"),
+            Some("Private Chat"),
+        );
+        let error = error_line("ping", "gagal", Some("+62 823"), Some("Private Chat"), None);
+        let warn = warn_line("ping", "timeout", Some("+62 823"), Some("Private Chat"));
+
+        assert!(incoming.contains(ansi::CYAN) && incoming.contains("[IN]"));
+        assert!(outgoing.contains(ansi::GREEN) && outgoing.contains("[OUT]"));
+        assert!(success.contains(ansi::GREEN) && success.contains("[SUCCESS]"));
+        assert!(error.contains(ansi::RED) && error.contains("[ERROR]"));
+        assert!(warn.contains(ansi::YELLOW) && warn.contains("[WARN]"));
+        assert!(tag("[INFO]", ansi::BLUE).contains(ansi::BLUE));
+        assert!(tag("[DEBUG]", ansi::GRAY).contains(ansi::GRAY));
+    }
+
+    #[test]
+    fn every_color_is_reset() {
+        for (label, color) in [
+            ("[IN]", ansi::CYAN),
+            ("[OUT]", ansi::GREEN),
+            ("[SUCCESS]", ansi::GREEN),
+            ("[WARN]", ansi::YELLOW),
+            ("[ERROR]", ansi::RED),
+            ("[INFO]", ansi::BLUE),
+            ("[DEBUG]", ansi::GRAY),
+        ] {
+            assert!(tag(label, color).ends_with(ansi::RESET));
+        }
+    }
+
+    #[test]
+    fn message_log_stays_two_lines() {
+        let line = message_line("[IN]", ansi::CYAN, "+62 823", "A", "Private Chat", "halo");
+        assert_eq!(line.lines().count(), 2);
     }
 }

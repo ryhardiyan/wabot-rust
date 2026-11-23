@@ -196,6 +196,7 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
     let _ = ctx.m.react("").await;
     match result {
         Ok(Ok(())) => {
+            crate::bot_lib::core::logger::log_success_from(&ctx.m, &ctx.command, elapsed);
             app.stats
                 .record(&ctx.command, Outcome::Ok, elapsed, None)
                 .await
@@ -211,7 +212,7 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
                 .await?;
         }
         Err(_) => {
-            crate::bot_lib::core::logger::log_from(
+            crate::bot_lib::core::logger::log_warn_from(
                 &ctx.m,
                 &ctx.command,
                 &format!("timeout setelah {} detik", elapsed.as_secs()),
