@@ -41,6 +41,17 @@ pub fn sender_phone(m: &MessageContext) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+/// Owner dikenali dari JID konfigurasi, bukan hanya dari nomor telepon.
+/// `OWNER_JID` dapat berupa JID LID, jadi perbandingan string tetap diperlukan.
+pub fn is_owner(m: &MessageContext, app: &App) -> bool {
+    if m.sender == app.config.owner_jid {
+        return true;
+    }
+    sender_phone(m).is_some_and(|number| {
+        app.config.owners.contains(&number) || number == app.config.owner_phone
+    })
+}
+
 /// Middleware akses: mengembalikan alasan penolakan, atau `None` jika diperbolehkan.
 pub async fn access_reason(app: &App, phone: Option<&str>, is_owner: bool) -> Option<String> {
     if is_owner {
@@ -130,7 +141,6 @@ pub async fn handle_contact(app: &Arc<App>, m: &MessageContext) -> Result<bool> 
         return Ok(true);
     }
     app.verify.set_pending(&applicant).await?;
-    m.reply(CONTACT_ACCEPTED).await?;
 
     let display = if m.push_name.is_empty() {
         number.clone()
@@ -165,6 +175,9 @@ pub async fn handle_contact(app: &Arc<App>, m: &MessageContext) -> Result<bool> 
         .client
         .send_message(owner.parse::<Jid>()?, contact)
         .await?;
+    // Konfirmasi ke user dikirim paling akhir: jika notifikasi owner gagal,
+    // user tidak menerima pesan "sudah diteruskan" yang palsu.
+    m.reply(CONTACT_ACCEPTED).await?;
     Ok(true)
 }
 
@@ -210,10 +223,8 @@ pub async fn approve(ctx: &Context) -> Result<()> {
         "Tentukan nomor user (contoh: .acc 08123456789) atau balas kartu kontak/notifikasi bot",
     )?;
     let jid = vcard::phone_jid(&target)?;
-    anyhow::ensure!(
-        ctx.app.verify.status(&jid).await? == Status::Pending,
-        "User {jid} tidak memiliki permintaan verifikasi tertunda"
-    );
+    // Spesifikasi memperbolehkan persetujuan langsung dari argumen nomor atau
+    // kartu yang di-reply, jadi status `pending` tidak dijadikan syarat.
     let updated = ctx.app.verify.set_verified(&jid).await?;
     anyhow::ensure!(updated, "Gagal menyimpan status terverifikasi untuk {jid}");
 

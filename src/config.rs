@@ -41,11 +41,18 @@ pub fn clean_number(value: &str) -> String {
         .next()
         .unwrap_or(value);
     let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
-    if digits.len() >= 8 && digits.starts_with('0') {
-        format!("62{}", &digits[1..])
-    } else {
-        digits
+    if digits.len() >= 8 {
+        // `08...` -> `628...`, dan `6208...` (prefix 62 dengan nol) -> `628...`.
+        // Selaras dengan `verify::vcard::normalize_phone` agar nomor owner yang
+        // cocok di vCard tidak meleset hanya karena beda format awalan.
+        if let Some(rest) = digits.strip_prefix('0') {
+            return format!("62{rest}");
+        }
+        if let Some(rest) = digits.strip_prefix("620") {
+            return format!("62{rest}");
+        }
     }
+    digits
 }
 
 impl Config {
@@ -292,5 +299,15 @@ mod tests {
         let e = parse_dotenv("GOOD=value with spaces\nINVALID SECRET CONTENT")
             .expect_err("invalid fixture");
         assert!(!e.to_string().contains("SECRET"));
+    }
+
+    #[test]
+    fn clean_number_matches_vcard_normalization() {
+        assert_eq!(clean_number("0812-3456 789"), "628123456789");
+        assert_eq!(
+            clean_number("6282323780821@s.whatsapp.net"),
+            "6282323780821"
+        );
+        assert_eq!(clean_number("6208123456789"), "628123456789");
     }
 }

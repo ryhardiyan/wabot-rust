@@ -94,11 +94,16 @@ pub fn build(display_name: &str, phone: &str) -> String {
 /// Mengekstrak nomor dari teks notifikasi yang dikirim bot ke owner
 /// (format: `Nomor: 628123456789`).
 pub fn phone_from_notice(text: &str) -> Option<String> {
-    let lower = text.to_ascii_lowercase();
-    let marker = lower.find("nomor:")?;
-    let tail = &text[marker + "nomor:".len()..];
-    let token = tail
-        .trim_start()
+    // Cari baris yang kuncinya `Nomor`, bukan `find("nomor:")` pada seluruh
+    // teks: `push_name` pengirim bisa saja mengandung kata "nomor:".
+    let token = text
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            key.trim()
+                .eq_ignore_ascii_case("nomor")
+                .then(|| value.trim())
+        })?
         .chars()
         .take_while(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | ' ' | '(' | ')'))
         .take(40)
@@ -150,5 +155,13 @@ mod tests {
         let notice = "🔔 PERMINTAAN\n\nNomor: 628123456789\nSilakan simpan kontak.";
         assert_eq!(phone_from_notice(notice).as_deref(), Some("628123456789"));
         assert!(phone_from_notice("tidak ada nomor").is_none());
+    }
+
+    #[test]
+    fn notice_with_nomor_in_display_name_still_parses() {
+        // `push_name` dipasang mentah di baris `Nama:`; kata "nomor:" di dalamnya
+        // tidak boleh menggeser ekstraksi ke baris yang salah.
+        let notice = "Nama: Nomor: Budi\nNomor: 0812-3456-789";
+        assert_eq!(phone_from_notice(notice).as_deref(), Some("628123456789"));
     }
 }

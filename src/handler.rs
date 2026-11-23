@@ -57,9 +57,9 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
             .await;
     }
     let phone = crate::verify::sender_phone(&m);
-    let is_owner = phone
-        .as_ref()
-        .is_some_and(|n| app.config.owners.contains(n) || *n == app.config.owner_phone);
+    // Owner dikenali dari JID konfigurasi ATAU nomor. JID LID tidak selalu
+    // membawa `sender_alt` berupa nomor, jadi perbandingan string wajib ada.
+    let is_owner = crate::verify::is_owner(&m, &app);
     if app.config.self_mode && !is_owner {
         return Ok(());
     }
