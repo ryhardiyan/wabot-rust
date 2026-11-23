@@ -95,7 +95,7 @@ async fn run(root: &Path, allow_secrets: bool, name: &str, raw: &str) -> Result<
     let args: Value = serde_json::from_str(raw).context("Argumen tool bukan JSON")?;
     match name {
         "read_file" => {
-            let path = resolve(root, field(&args, "path")?, allow_secrets)?;
+            let path = resolve(root, field(&args, "path")?, allow_secrets).await?;
             anyhow::ensure!(path.is_file(), "Bukan file: {}", path.display());
             let bytes = tokio::fs::read(&path).await?;
             anyhow::ensure!(
@@ -111,7 +111,7 @@ async fn run(root: &Path, allow_secrets: bool, name: &str, raw: &str) -> Result<
             Ok(truncate(&redact_secrets(&text), limit))
         }
         "write_file" => {
-            let path = resolve(root, field(&args, "path")?, allow_secrets)?;
+            let path = resolve(root, field(&args, "path")?, allow_secrets).await?;
             let content = field(&args, "content")?;
             anyhow::ensure!(content.len() <= 2 * 1024 * 1024, "Isi terlalu besar");
             if let Some(parent) = path.parent() {
@@ -125,7 +125,7 @@ async fn run(root: &Path, allow_secrets: bool, name: &str, raw: &str) -> Result<
             ))
         }
         "delete_file" => {
-            let path = resolve(root, field(&args, "path")?, allow_secrets)?;
+            let path = resolve(root, field(&args, "path")?, allow_secrets).await?;
             anyhow::ensure!(path.is_file(), "Bukan file: {}", path.display());
             tokio::fs::remove_file(&path).await?;
             Ok(format!("OK: {} dihapus", path.display()))
@@ -135,7 +135,7 @@ async fn run(root: &Path, allow_secrets: bool, name: &str, raw: &str) -> Result<
             let path = if requested.trim().is_empty() {
                 root.to_path_buf()
             } else {
-                resolve(root, requested, allow_secrets)?
+                resolve(root, requested, allow_secrets).await?
             };
             let mut dir = tokio::fs::read_dir(&path).await?;
             let mut names = Vec::new();
