@@ -30,6 +30,7 @@ tempfile = "3"
 uuid = { version = "1", features = ["v4"] }
 webp = { version = "0.3", default-features = false }
 whatsapp-rust = { git = "https://github.com/oxidezap/whatsapp-rust", rev = "f8165f282008935732e0b26d6f5cca5038ecd222", default-features = false, features = ["sqlite-storage", "tokio-native", "tokio-transport", "ureq-client"] }
+zip = { version = "2", default-features = false }
 
 [dev-dependencies]
 axum = "0.8"
