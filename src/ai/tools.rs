@@ -171,7 +171,7 @@ async fn run(root: &Path, allow_secrets: bool, name: &str, raw: &str) -> Result<
                 .and_then(Value::as_u64)
                 .unwrap_or(30)
                 .clamp(1, 120);
-            let mut child = tokio::process::Command::new(&command)
+            let child = tokio::process::Command::new(&command)
                 .args(&argv)
                 .current_dir(root)
                 .stdin(std::process::Stdio::null())

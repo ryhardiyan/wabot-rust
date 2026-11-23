@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn registry_has_all_enabled_plugins_and_unique_commands() {
         let plugins = super::registry();
-        assert_eq!(plugins.len(), 48);
+        assert_eq!(plugins.len(), 49);
         let mut seen = std::collections::HashSet::new();
         for plugin in plugins {
             let meta = plugin.metadata();
