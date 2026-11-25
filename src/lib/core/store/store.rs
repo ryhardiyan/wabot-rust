@@ -70,6 +70,9 @@ pub struct Store {
     pub contacts: Cache<String>,
     pub messages: Cache<std::sync::Arc<whatsapp_rust::waproto::whatsapp::Message>>,
     pub seen: Cache<()>,
+    /// Cooldown permintaan verifikasi per nomor agar owner tidak dibanjiri
+    /// notifikasi berulang dari user yang sama.
+    pub verify_requests: Cache<()>,
 }
 impl Default for Store {
     fn default() -> Self {
@@ -78,6 +81,7 @@ impl Default for Store {
             contacts: Cache::new(512, Duration::from_secs(3600)),
             messages: Cache::new(128, Duration::from_secs(300)),
             seen: Cache::new(2048, Duration::from_secs(600)),
+            verify_requests: Cache::new(512, Duration::from_secs(300)),
         }
     }
 }

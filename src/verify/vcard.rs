@@ -23,10 +23,21 @@ pub fn normalize_phone(raw: &str) -> String {
 }
 
 /// Mengubah nomor menjadi JID WhatsApp kanonik.
+///
+/// Menerima format lokal Indonesia (`08...` -> `628...`) dan nomor
+/// internasional apa pun (mis. `+1 415...`). Server `@lid` sengaja ditolak
+/// karena LID bukan nomor telepon.
 pub fn phone_jid(raw: &str) -> Result<String> {
-    let phone = normalize_phone(raw);
+    let trimmed = raw.trim();
+    if let Some((_, server)) = trimmed.split_once('@') {
+        anyhow::ensure!(
+            server.eq_ignore_ascii_case("s.whatsapp.net") || server.eq_ignore_ascii_case("c.us"),
+            "Nomor telepon tidak valid: {raw}"
+        );
+    }
+    let phone = normalize_phone(trimmed);
     anyhow::ensure!(
-        (8..=15).contains(&phone.len()) && phone.starts_with("62"),
+        (8..=15).contains(&phone.len()),
         "Nomor telepon tidak valid: {raw}"
     );
     Ok(format!("{phone}@s.whatsapp.net"))
@@ -96,8 +107,12 @@ pub fn build(display_name: &str, phone: &str) -> String {
 pub fn phone_from_notice(text: &str) -> Option<String> {
     // Cari baris yang kuncinya `Nomor`, bukan `find("nomor:")` pada seluruh
     // teks: `push_name` pengirim bisa saja mengandung kata "nomor:".
+    // Ambil baris `Nomor:` terakhir: bot selalu menaruh nomor otoritatif di
+    // akhir notifikasi, sehingga `Nama:`/push_name yang berisi baris `Nomor:`
+    // palsu (newline injection) tidak bisa menggeser target persetujuan.
     let token = text
         .lines()
+        .rev()
         .find_map(|line| {
             let (key, value) = line.split_once(':')?;
             key.trim()
@@ -109,7 +124,7 @@ pub fn phone_from_notice(text: &str) -> Option<String> {
         .take(40)
         .collect::<String>();
     let phone = normalize_phone(&token);
-    ((8..=15).contains(&phone.len()) && phone.starts_with("62")).then_some(phone)
+    (8..=15).contains(&phone.len()).then_some(phone)
 }
 
 #[cfg(test)]
@@ -141,6 +156,19 @@ mod tests {
     }
 
     #[test]
+    fn supports_international_numbers_and_rejects_lid() {
+        assert_eq!(
+            phone_jid("+1 415-555-2671").unwrap(),
+            "14155552671@s.whatsapp.net"
+        );
+        assert!(phone_jid("123456789012@lid").is_err());
+        assert_eq!(
+            phone_from_notice("Nomor: +1 415 555 2671").as_deref(),
+            Some("14155552671")
+        );
+    }
+
+    #[test]
     fn handles_folded_lines_and_escapes() {
         let card = "FN:Rahardiyan\r\n X\nTEL;TYPE=CELL:08123456789";
         assert_eq!(parse(card).name, "RahardiyanX");
@@ -162,6 +190,14 @@ mod tests {
         // `push_name` dipasang mentah di baris `Nama:`; kata "nomor:" di dalamnya
         // tidak boleh menggeser ekstraksi ke baris yang salah.
         let notice = "Nama: Nomor: Budi\nNomor: 0812-3456-789";
+        assert_eq!(phone_from_notice(notice).as_deref(), Some("628123456789"));
+    }
+
+    #[test]
+    fn notice_ignores_injected_nomor_line_from_display_name() {
+        // Jika push_name berisi newline + baris `Nomor:` palsu, nomor asli
+        // (baris terakhir yang ditulis bot) tetap yang dipilih.
+        let notice = "Nama: Budi\nNomor: 628999999999\nNomor: 628123456789";
         assert_eq!(phone_from_notice(notice).as_deref(), Some("628123456789"));
     }
 }

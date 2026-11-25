@@ -262,10 +262,30 @@ pub async fn handle_contact(app: &Arc<App>, m: &MessageContext) -> Result<bool> 
     }
     app.verify.set_pending(&applicant).await?;
 
+    // Batasi satu notifikasi per nomor per jendela cooldown agar owner tidak
+    // bisa dibanjiri kartu kontak berulang dari user yang sama.
+    let cooldown_key = format!("verify-request:{number}");
+    if !app
+        .store
+        .verify_requests
+        .insert_if_absent(cooldown_key.clone(), ())
+        .await
+    {
+        m.reply(ACCESS_PENDING).await?;
+        return Ok(true);
+    }
+
+    // push_name berasal dari pengirim; buang karakter kontrol/newline agar tidak
+    // bisa menyisipkan baris `Nomor:` palsu ke notifikasi owner.
     let display = if m.push_name.is_empty() {
         number.clone()
     } else {
-        m.push_name.clone()
+        m.push_name
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .collect::<String>()
+            .trim()
+            .to_string()
     };
     let notice = format!(
         "🔔 *PERMINTAAN VERIFIKASI BARU*\n\nAda user yang ingin mendaftar. Silakan simpan nomor kontak di bawah ini secara manual di HP Anda, lalu reply pesan kontak ini dengan perintah *.acc* untuk menyetujui.\n\nNama: {display}\nNomor: {number}"
@@ -300,6 +320,8 @@ pub async fn handle_contact(app: &Arc<App>, m: &MessageContext) -> Result<bool> 
         Ok::<(), anyhow::Error>(())
     };
     if let Err(error) = forwarded.await {
+        // Hapus cooldown supaya user bisa mencoba lagi setelah gangguan.
+        app.store.verify_requests.remove(&cooldown_key).await;
         tracing::warn!(%error, "Gagal meneruskan kartu kontak ke owner");
         m.reply(CONTACT_FORWARD_FAILED).await?;
         return Ok(true);
@@ -335,7 +357,14 @@ async fn phone_from_identifier(app: &App, m: &MessageContext, value: &str) -> Op
 /// teks notifikasi yang di-reply, mention, atau pengirim pesan yang di-quote.
 async fn resolve_target(ctx: &Context) -> Option<String> {
     if !ctx.arg(0).is_empty() {
-        return Some(ctx.arg(0).to_string());
+        let value = ctx.arg(0);
+        // Argumen bisa berupa nomor (08/62) atau JID/LID; resolve LID ke nomor
+        // bila pemetaannya sudah dipelajari sebelum menyerah ke bentuk mentah.
+        return Some(
+            phone_from_identifier(&ctx.app, &ctx.m, value)
+                .await
+                .unwrap_or_else(|| value.to_string()),
+        );
     }
     if let Some(quoted) = quoted_message(&ctx.m) {
         if let Some(card) = card_from(&quoted) {

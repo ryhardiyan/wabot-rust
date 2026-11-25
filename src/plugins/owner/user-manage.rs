@@ -23,20 +23,52 @@ async fn execute(ctx: &Context) -> Result<()> {
         !target.is_empty(),
         "Tentukan nomor, mention, atau balas pesan user"
     );
-    ctx.app
+
+    let approve = ctx.command == "accuser";
+    // Database verifikasi SQLite adalah sumber kebenaran untuk akses. Dulu
+    // `.accuser`/`.unreguser` hanya mengubah JSON sehingga user tetap ditolak
+    // (atau tetap punya akses setelah dicabut).
+    let verify_jid = match target.parse::<whatsapp_rust::Jid>() {
+        Ok(jid) => jid.to_string(),
+        Err(_) => crate::verify::vcard::phone_jid(target)?,
+    };
+    if approve {
+        ctx.app.verify.set_verified(&verify_jid).await?;
+    } else {
+        ctx.app.verify.set_unregistered(&verify_jid).await?;
+    }
+
+    // Sinkronkan database JSON lama agar tampilan `.cekreg` tetap konsisten.
+    let jid_for_json = verify_jid.clone();
+    if let Err(error) = ctx
+        .app
         .db
-        .update(|d| {
-            let mut id = d.resolve(target);
+        .update(move |d| {
+            let mut id = d.resolve(&jid_for_json);
             if !d.users.contains_key(&id) {
-                let number = crate::config::clean_number(target);
+                let number = crate::config::clean_number(&jid_for_json);
                 if !number.is_empty() {
                     id = d.resolve(&format!("{number}@s.whatsapp.net"));
                 }
             }
             let user = d.users.get_mut(&id).context("User tidak ditemukan")?;
-            user["registered"] = serde_json::json!(ctx.command == "accuser");
+            user["registered"] = serde_json::json!(approve);
+            user["registeredAt"] = if approve {
+                serde_json::json!(chrono::Utc::now().to_rfc3339())
+            } else {
+                serde_json::Value::Null
+            };
             Ok(())
         })
-        .await?;
-    ctx.reply("✅ Status registrasi diperbarui").await
+        .await
+    {
+        tracing::warn!(%error, jid = %verify_jid, "Sinkronisasi status JSON gagal");
+    }
+
+    ctx.reply(if approve {
+        format!("✅ User {verify_jid} diverifikasi dan kini bisa menggunakan bot.")
+    } else {
+        format!("✅ Akses user {verify_jid} dicabut.")
+    })
+    .await
 }

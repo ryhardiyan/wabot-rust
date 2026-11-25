@@ -30,12 +30,23 @@ impl Status {
 }
 
 /// Nomor telepon kanonik (JID `@s.whatsapp.net`) dari sebuah JID/identifier.
-/// LID tidak bisa dikonversi ke nomor hanya dengan membuang `@lid`-nya.
+/// LID tidak bisa dikonversi ke nomor hanya dengan membuang `@lid`-nya; server
+/// selain PN mengembalikan `None` agar angka LID tidak disalahartikan sebagai
+/// nomor telepon. Nomor internasional (bukan hanya `62`) diterima.
 pub fn canonical_pn(value: &str) -> Option<String> {
     let raw = value.trim();
-    let user = raw.split('@').next().unwrap_or(raw);
+    let (user, server) = match raw.split_once('@') {
+        Some((user, server)) => (user, Some(server)),
+        None => (raw, None),
+    };
+    if let Some(server) = server {
+        if !(server.eq_ignore_ascii_case("s.whatsapp.net") || server.eq_ignore_ascii_case("c.us")) {
+            return None;
+        }
+    }
     let phone = crate::config::clean_number(user);
-    ((8..=15).contains(&phone.len()) && phone.starts_with("62"))
+    (8..=15)
+        .contains(&phone.len())
         .then(|| format!("{phone}@s.whatsapp.net"))
 }
 
@@ -240,6 +251,21 @@ impl VerifyDb {
         .context("Gagal menyimpan status verified")?;
         Ok(result.rows_affected() > 0)
     }
+
+    /// Menghapus status untuk semua kunci/alias JID yang dikenal sehingga user
+    /// kembali `unregistered`. Mengembalikan true bila ada baris yang dihapus.
+    pub async fn set_unregistered(&self, jid: &str) -> Result<bool> {
+        let mut affected = 0u64;
+        for key in self.keys(jid).await? {
+            let result = sqlx::query("DELETE FROM users WHERE jid = ?")
+                .bind(&key)
+                .execute(&self.pool)
+                .await
+                .context("Gagal menghapus status verifikasi")?;
+            affected += result.rows_affected();
+        }
+        Ok(affected > 0)
+    }
 }
 
 #[cfg(test)]
@@ -284,6 +310,23 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    async fn unregister_revokes_all_aliases() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let db = VerifyDb::open(dir.path().join("verify.db")).await?;
+        let jid = "628123456789@s.whatsapp.net";
+        let lid = "123456789@lid";
+        db.link_identity(lid, jid).await?;
+        db.set_verified(jid).await?;
+        assert_eq!(db.status(lid).await?, Status::Verified);
+        assert!(db.set_unregistered(jid).await?);
+        assert_eq!(db.status(jid).await?, Status::Unregistered);
+        assert_eq!(db.status(lid).await?, Status::Unregistered);
+        // Menghapus data yang tidak ada bukan error.
+        assert!(!db.set_unregistered(jid).await?);
+        Ok(())
+    }
+
     #[test]
     fn canonical_forms_ignore_invalid_identifiers() {
         assert_eq!(canonical_lid("123@lid"), Some("123@lid".into()));
@@ -293,5 +336,10 @@ mod tests {
             Some("628123456789@s.whatsapp.net".into())
         );
         assert_eq!(canonical_pn("123@lid"), None);
+        assert_eq!(
+            canonical_pn("+14155552671"),
+            Some("14155552671@s.whatsapp.net".into())
+        );
+        assert_eq!(canonical_pn("123456789012@lid"), None);
     }
 }
