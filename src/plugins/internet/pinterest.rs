@@ -1,6 +1,6 @@
 use crate::plugins::Context;
 use anyhow::{bail, Context as _, Result};
-use hmac13::{Hmac, Mac};
+use hmac13::{Hmac, KeyInit, Mac};
 use serde_json::{json, Value};
 use sha2::Sha256;
 use std::fmt::Write as _;
@@ -683,6 +683,47 @@ async fn lens_command(ctx: &Context, pin: &Pinterest<'_>, rest: &str) -> Result<
         "Balas/kirim foto, atau berikan link pin/URL gambar.\n\nContoh: /pinterest -lens anime wallpaper",
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hmac_matches_rfc4231_vector() {
+        // RFC 4231 test case 2.
+        assert_eq!(
+            hmac_hex("Jefe", "what do ya want for nothing?"),
+            "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843"
+        );
+    }
+
+    #[test]
+    fn percent_encoding_matches_reference() {
+        assert_eq!(pct("a b/c!d"), "a%20b%2Fc%21d");
+        assert_eq!(pct("abc-._~"), "abc-._~");
+    }
+
+    #[test]
+    fn pin_ids_include_new_style_and_numeric() {
+        assert_eq!(
+            pin_id_from("https://www.pinterest.com/pin/123456/").as_deref(),
+            Some("123456")
+        );
+        assert_eq!(
+            pin_id_from("https://www.pinterest.com/pin/e1_ab-cd/").as_deref(),
+            Some("e1_ab-cd")
+        );
+        assert_eq!(pin_id_from("https://pin.it/abc"), None);
+    }
+
+    #[test]
+    fn keyword_terms_filters_stopwords_and_limits() {
+        assert_eq!(
+            keyword_terms("Meet our latest Fair Isle picture with style", 3),
+            "meet our latest"
+        );
+    }
 }
 
 async fn execute(ctx: &Context) -> Result<()> {
