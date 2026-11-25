@@ -5,7 +5,11 @@ use serde_json::{json, Value};
 use sha2::Sha256;
 use std::fmt::Write as _;
 
-crate::plugins::plugin!(&["pinterest", "pin"], "internet", execute);
+crate::plugins::plugin!(
+    &["pinterest", "pin", "pint", "pinsearch"],
+    "internet",
+    execute
+);
 
 const BASE_API: &str = "https://api.pinterest.com/v3";
 const DEFAULT_CLIENT_ID: &str = "1431602";
@@ -727,7 +731,8 @@ mod tests {
 }
 
 async fn execute(ctx: &Context) -> Result<()> {
-    let sub = ctx.arg(0).trim_start_matches('-').to_ascii_lowercase();
+    let first = ctx.arg(0);
+    let sub = first.trim_start_matches('-').to_ascii_lowercase();
     let rest = ctx
         .args
         .iter()
@@ -770,6 +775,17 @@ async fn execute(ctx: &Context) -> Result<()> {
         }
         "lens" => lens_command(ctx, &pin, rest).await,
         other => {
+            // Kompatibilitas dengan `/pinterest <kata kunci>` versi lama.
+            if !first.starts_with('-') && !ctx.text.trim().is_empty() {
+                let query = ctx.text.trim();
+                let response = pin.search(query, None, RESULT_LIMIT).await?;
+                return ctx
+                    .reply(format_results(
+                        &format!("🔎 *Pinterest Search* — {query}"),
+                        &response,
+                    ))
+                    .await;
+            }
             ctx.reply(format!(
                 "Subcommand `-{other}` tidak dikenal.\n\n{}",
                 usage()

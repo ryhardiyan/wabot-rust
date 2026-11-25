@@ -4,8 +4,6 @@ use super::Registry;
 mod downloader_download;
 #[path = "downloader-mediafire.rs"]
 mod downloader_mediafire;
-#[path = "downloader-pinterest.rs"]
-mod downloader_pinterest;
 #[path = "downloader-spotify.rs"]
 mod downloader_spotify;
 #[path = "downloader-tiktok.rs"]
@@ -23,7 +21,6 @@ pub(super) fn register(plugins: &mut Registry) {
     plugins.extend([
         Box::new(downloader_download::Command) as Box<dyn crate::plugins::Plugin>,
         Box::new(downloader_mediafire::Command),
-        Box::new(downloader_pinterest::Command),
         Box::new(downloader_spotify::Command),
         Box::new(downloader_tiktok::Command),
         Box::new(downloader_twitter::Command),
