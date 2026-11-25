@@ -5,6 +5,8 @@ use tracing_subscriber::EnvFilter;
 #[derive(Clone)]
 pub struct Config {
     pub owners: Vec<String>,
+    /// Nomor/LID owner dari `OWNER_NUMBER` (bisa lebih dari satu akun).
+    pub owner_numbers: Vec<String>,
     pub pairing_number: String,
     pub pairing_code: Option<String>,
     pub watermark: String,
@@ -42,6 +44,14 @@ pub struct Config {
     pub ai_history_messages: usize,
     /// Izinkan tool AI mengakses .env/database/sesi (AI_ALLOW_SECRETS).
     pub ai_allow_secrets: bool,
+    /// Timeout total satu request AI dalam detik (AI_TIMEOUT_SECS).
+    pub ai_timeout_secs: u64,
+    /// Maksimal percobaan request AI, termasuk percobaan pertama (AI_MAX_ATTEMPTS).
+    pub ai_max_attempts: u32,
+    /// Jeda awal backoff retry AI dalam milidetik (AI_RETRY_BASE_MS).
+    pub ai_retry_base_ms: u64,
+    /// Batas total satu permintaan AI termasuk retry (AI_TOTAL_TIMEOUT_SECS).
+    pub ai_total_timeout_secs: u64,
     pub max_media_bytes: usize,
     pub max_concurrent: usize,
     pub rate_limit: u32,
@@ -180,12 +190,34 @@ impl Config {
             "AI_MAX_TURNS dan AI_HISTORY_MESSAGES harus positif"
         );
         let ai_allow_secrets = get("AI_ALLOW_SECRETS", "false").eq_ignore_ascii_case("true");
+        let ai_timeout_secs: u64 = get("AI_TIMEOUT_SECS", "180").parse()?;
+        let ai_max_attempts: u32 = get("AI_MAX_ATTEMPTS", "4").parse()?;
+        let ai_retry_base_ms: u64 = get("AI_RETRY_BASE_MS", "2000").parse()?;
+        // Batas total ±5 menit, masih di bawah timeout plugin/handler (660–720 dtk).
+        let ai_total_timeout_secs: u64 = get("AI_TOTAL_TIMEOUT_SECS", "300").parse()?;
+        anyhow::ensure!(
+            (30..=600).contains(&ai_timeout_secs),
+            "AI_TIMEOUT_SECS harus 30–600 detik"
+        );
+        anyhow::ensure!(
+            (30..=600).contains(&ai_total_timeout_secs),
+            "AI_TOTAL_TIMEOUT_SECS harus 30–600 detik"
+        );
+        anyhow::ensure!(
+            (1..=10).contains(&ai_max_attempts),
+            "AI_MAX_ATTEMPTS harus 1–10"
+        );
+        anyhow::ensure!(
+            (100..=30_000).contains(&ai_retry_base_ms),
+            "AI_RETRY_BASE_MS harus 100–30000 milidetik"
+        );
         Ok(Self {
             owners: owners
                 .iter()
                 .map(|s| clean_number(s))
                 .filter(|s| !s.is_empty())
                 .collect(),
+            owner_numbers,
             pairing_number,
             pairing_code: (!code.is_empty()).then_some(code),
             watermark: get("WATERMARK", "Liora"),
@@ -212,6 +244,10 @@ impl Config {
             ai_max_turns,
             ai_history_messages,
             ai_allow_secrets,
+            ai_timeout_secs,
+            ai_max_attempts,
+            ai_retry_base_ms,
+            ai_total_timeout_secs,
             max_media_bytes,
             max_concurrent,
             rate_limit,
@@ -342,6 +378,23 @@ mod tests {
         let e = parse_dotenv("GOOD=value with spaces\nINVALID SECRET CONTENT")
             .expect_err("invalid fixture");
         assert!(!e.to_string().contains("SECRET"));
+    }
+
+    #[test]
+    fn ai_retry_settings_have_safe_defaults_and_limits() -> Result<()> {
+        let c = Config::from_env(HashMap::new())?;
+        assert_eq!(c.ai_timeout_secs, 180);
+        assert_eq!(c.ai_max_attempts, 4);
+        assert_eq!(c.ai_retry_base_ms, 2_000);
+        assert_eq!(c.ai_total_timeout_secs, 300);
+        assert!(Config::from_env(HashMap::from([("AI_MAX_ATTEMPTS".into(), "0".into())])).is_err());
+        assert!(Config::from_env(HashMap::from([(
+            "AI_TOTAL_TIMEOUT_SECS".into(),
+            "10".into()
+        )]))
+        .is_err());
+        assert!(Config::from_env(HashMap::from([("AI_TIMEOUT_SECS".into(), "5".into())])).is_err());
+        Ok(())
     }
 
     #[test]

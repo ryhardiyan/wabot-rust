@@ -41,10 +41,12 @@ async fn main() -> Result<()> {
     }
     let stats = Arc::new(bot_stats::Stats::open(&config.plugin_db_path).await?);
     let ai = Arc::new(ai::session::AiSession::open(&config.ai_db_path).await?);
+    let ai_http = crate::ai::client::http_client(config.ai_timeout_secs)?;
     let app = Arc::new(plugins::App {
         permits: Arc::new(tokio::sync::Semaphore::new(config.max_concurrent)),
         config,
         http: bot_lib::downloader::client()?,
+        ai_http,
         db,
         verify,
         ai,

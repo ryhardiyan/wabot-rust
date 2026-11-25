@@ -13,6 +13,7 @@ pub mod tools;
 
 use crate::plugins::App;
 use anyhow::{bail, Result};
+use std::sync::Arc;
 
 const SYSTEM_PROMPT: &str = "Kamu adalah asisten pribadi owner bot WhatsApp yang berjalan di VPS. \
 Jawab dengan ringkas dan jelas dalam bahasa Indonesia. Kamu memiliki akses ke file-system VPS \
@@ -22,7 +23,14 @@ Selalu laporkan hasil akhir secara singkat setelah memakai tool. Jangan mengaran
 bila belum membacanya.";
 
 /// Jalankan satu permintaan AI. `reset` menghapus sesi lama lebih dulu.
-pub async fn ask(app: &App, chat: &str, prompt: &str, reset: bool) -> Result<String> {
+/// `reporter` dipakai plugin untuk mengedit pesan status secara real-time.
+pub async fn ask(
+    app: &App,
+    chat: &str,
+    prompt: &str,
+    reset: bool,
+    reporter: Option<Arc<dyn client::ProgressReporter>>,
+) -> Result<String> {
     if app.config.ai_api_key.trim().is_empty() {
         bail!("AI_API_KEY belum diisi di .env");
     }
@@ -44,6 +52,10 @@ pub async fn ask(app: &App, chat: &str, prompt: &str, reset: bool) -> Result<Str
         max_turns: app.config.ai_max_turns,
         history_messages: app.config.ai_history_messages,
         allow_secrets: app.config.ai_allow_secrets,
+        timeout_secs: app.config.ai_timeout_secs,
+        max_attempts: app.config.ai_max_attempts,
+        retry_base_ms: app.config.ai_retry_base_ms,
+        total_timeout_secs: app.config.ai_total_timeout_secs,
     };
     let mut messages = app.ai.load(chat).await?;
     if messages.is_empty() {
@@ -51,7 +63,7 @@ pub async fn ask(app: &App, chat: &str, prompt: &str, reset: bool) -> Result<Str
     }
     messages.push(client::Message::user(prompt));
 
-    let (answer, history) = client::complete(&settings, &app.http, messages).await?;
+    let (answer, history) = client::complete(&settings, &app.ai_http, messages, reporter).await?;
     app.ai.save(chat, &history).await?;
     Ok(answer)
 }

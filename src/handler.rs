@@ -56,10 +56,15 @@ pub async fn handle(app: Arc<App>, inbound: whatsapp_rust::bot::MessageContext) 
             .insert(m.sender.clone(), m.push_name.clone())
             .await;
     }
-    let phone = crate::verify::sender_phone(&m);
-    // Owner dikenali dari JID konfigurasi ATAU nomor. JID LID tidak selalu
-    // membawa `sender_alt` berupa nomor, jadi perbandingan string wajib ada.
-    let is_owner = crate::verify::is_owner(&m, &app);
+    // Pelajari pasangan LID <-> nomor dari header sebelum pengecekan akses.
+    // Nomor juga bisa didapat dari store whatsapp-rust bila header tidak
+    // membawa `sender_pn`/`participant_pn`.
+    if let Err(error) = crate::verify::remember_identity(&app, &m).await {
+        tracing::warn!(%error, "Gagal menyimpan relasi identitas pesan masuk");
+    }
+    let phone = crate::verify::resolve_sender_phone(&app, &m).await;
+    // Owner dikenali dari JID konfigurasi (bisa LID) ATAU nomor hasil resolusi.
+    let is_owner = crate::verify::is_owner(&m, &app, phone.as_deref());
     if app.config.self_mode && !is_owner {
         return Ok(());
     }

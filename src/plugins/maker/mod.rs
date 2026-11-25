@@ -8,6 +8,8 @@ mod maker_cardgenerate;
 mod maker_qc;
 #[path = "maker-sticker.rs"]
 mod maker_sticker;
+#[path = "maker-stickeraudio.rs"]
+mod maker_stickeraudio;
 
 pub(super) fn register(plugins: &mut Registry) {
     plugins.extend([
@@ -15,5 +17,6 @@ pub(super) fn register(plugins: &mut Registry) {
         Box::new(maker_cardgenerate::Command),
         Box::new(maker_qc::Command),
         Box::new(maker_sticker::Command),
+        Box::new(maker_stickeraudio::Command),
     ]);
 }

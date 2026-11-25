@@ -134,6 +134,23 @@ impl MessageContext {
             )
             .await
     }
+    /// Kirim stiker audio dengan context quote pesan yang dibalas.
+    pub async fn send_audio_sticker(
+        &self,
+        sticker: Vec<u8>,
+        audio: Vec<u8>,
+        is_animated: bool,
+    ) -> Result<()> {
+        self.socket
+            .send_audio_sticker(
+                &self.chat,
+                sticker,
+                audio,
+                is_animated,
+                Some(self.inbound.build_quote_context()),
+            )
+            .await
+    }
 }
 
 struct LimitedWriter {

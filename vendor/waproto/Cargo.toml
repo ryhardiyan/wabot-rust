@@ -1,0 +1,33 @@
+[package]
+name = "waproto"
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.94"
+authors = ["João Lucas <jlucaso@hotmail.com>"]
+license = "MIT"
+repository = "https://github.com/jlucaso1/whatsapp-rust"
+description = "Protocol Buffers definitions for WhatsApp"
+
+# `serde` is referenced only by derives injected into the generated code by
+# `build.rs` (`#[derive(serde::Serialize)]`), so static analysers miss it.
+[package.metadata.cargo-machete]
+ignored = ["serde"]
+
+[features]
+default = []
+serde-deserialize = []
+serde-snake-case = ["serde-deserialize"]
+serde-enum-repr = ["dep:serde_repr"]
+
+[dependencies]
+buffa = { version = "0.9.1", default-features = false, features = ["json"] }
+bytes = { version = "1.12", default-features = false }
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_repr = { version = "0.1", optional = true }
+
+[build-dependencies]
+buffa = { version = "0.9.1", default-features = false, features = ["json"] }
+buffa-build = { version = "0.9.1", default-features = false }
+buffa-descriptor = { version = "0.9.1", default-features = false }
+heck = "0.5"
+sha2 = { version = "0.11.0", default-features = false }

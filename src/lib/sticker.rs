@@ -86,6 +86,57 @@ pub async fn transcode(input: Vec<u8>, args: &[&str]) -> Result<Vec<u8>> {
     }
 }
 
+/// Media tidak memiliki stream audio yang bisa diekstrak.
+#[derive(Debug)]
+pub struct NoAudioStream;
+impl std::fmt::Display for NoAudioStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("media tidak memiliki audio")
+    }
+}
+impl std::error::Error for NoAudioStream {}
+
+/// Ekstrak stream audio pertama dari video/GIF lalu encke sebagai Opus (OGG).
+///
+/// Argumen ffmpeg mengikuti format stiker audio WhatsApp: libopus 128k,
+/// 48 kHz stereo, container opus, tanpa video.
+pub async fn extract_opus_audio(input: Vec<u8>) -> Result<Vec<u8>> {
+    anyhow::ensure!(!input.is_empty(), "Media kosong");
+    let audio = transcode(
+        input,
+        &[
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            "128k",
+            "-ac",
+            "2",
+            "-ar",
+            "48000",
+            "-application",
+            "audio",
+            "-f",
+            "opus",
+        ],
+    )
+    .await
+    .map_err(|e| {
+        if e.to_string().contains("matches no streams") {
+            anyhow::Error::new(NoAudioStream)
+        } else {
+            e.context("Gagal mengekstrak audio")
+        }
+    })?;
+    anyhow::ensure!(
+        audio.len() >= 4 && &audio[..4] == b"OggS",
+        "Hasil audio tidak valid"
+    );
+    Ok(audio)
+}
+
 pub fn add_exif(mut data: Vec<u8>, pack: &str, author: &str) -> Result<Vec<u8>> {
     anyhow::ensure!(
         data.len() >= 20 && &data[..4] == b"RIFF" && &data[8..12] == b"WEBP",
@@ -138,6 +189,82 @@ mod tests {
     #[test]
     fn truncated_webp_returns_error() {
         assert!(add_exif(b"RIFF1234WEBP".to_vec(), "p", "a").is_err());
+    }
+    #[tokio::test]
+    async fn extract_rejects_empty_media() {
+        assert!(extract_opus_audio(Vec::new()).await.is_err());
+    }
+    #[tokio::test]
+    #[ignore = "memerlukan ffmpeg; jalankan cargo test -- --ignored"]
+    async fn extract_opus_from_video_with_audio() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("input.mp4");
+        let status = Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=128x128:rate=10:duration=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=1",
+                "-map",
+                "0:v:0",
+                "-map",
+                "1:a:0",
+                "-shortest",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                "-pix_fmt",
+                "yuv420p",
+            ])
+            .arg(&path)
+            .status()
+            .await?;
+        anyhow::ensure!(status.success(), "gagal membuat video uji");
+        let audio = extract_opus_audio(tokio::fs::read(&path).await?).await?;
+        assert_eq!(&audio[..4], b"OggS");
+        Ok(())
+    }
+    #[tokio::test]
+    #[ignore = "memerlukan ffmpeg; jalankan cargo test -- --ignored"]
+    async fn extract_rejects_video_without_audio() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("silent.mp4");
+        let status = Command::new("ffmpeg")
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=128x128:rate=10:duration=1",
+                "-map",
+                "0:v:0",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+            ])
+            .arg(&path)
+            .status()
+            .await?;
+        anyhow::ensure!(status.success(), "gagal membuat video uji");
+        let err = extract_opus_audio(tokio::fs::read(&path).await?)
+            .await
+            .unwrap_err();
+        assert!(err.downcast_ref::<NoAudioStream>().is_some(), "{err:?}");
+        Ok(())
     }
     #[tokio::test]
     #[ignore = "memerlukan ffmpeg; jalankan cargo test -- --ignored"]

@@ -23,6 +23,8 @@ use std::{sync::Arc, time::Instant};
 pub struct App {
     pub config: Arc<Config>,
     pub http: reqwest::Client,
+    /// Klien khusus AI: timeout panjang + header standar agar proxy tidak menolak.
+    pub ai_http: reqwest::Client,
     pub db: Arc<UserDatabase>,
     pub verify: Arc<VerifyDb>,
     pub ai: Arc<crate::ai::session::AiSession>,
@@ -267,7 +269,7 @@ mod tests {
     #[test]
     fn registry_has_all_enabled_plugins_and_unique_commands() {
         let plugins = super::registry();
-        assert_eq!(plugins.len(), 49);
+        assert_eq!(plugins.len(), 50);
         let mut seen = std::collections::HashSet::new();
         for plugin in plugins {
             let meta = plugin.metadata();
